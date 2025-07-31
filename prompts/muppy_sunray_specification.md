@@ -34,7 +34,9 @@ Une extension Chrome dédiée :
 
 ---
 
-## 🔐 Mécanisme d’authentification
+## 🔐 Modes d’authentification
+
+### 1. Mode Extension (signature ED25519)
 
 ### Format de l’en-tête envoyé :
 ```
@@ -51,6 +53,59 @@ X-MPY-SUNRAY: <username>:<timestamp>:<signature>
 - `signature` ED25519 est correcte via la clé publique de l’utilisateur.
 
 ---
+
+### 2. Mode sans extension — Scénario Toctoc
+
+Permettre un accès sécurisé à une application protégée par Sunray **sans nécessiter d’extension navigateur**, au moyen d’un workflow d’autorisation par e‑mail + code PIN, inspiré de Cloudflare Access mais renforcé.
+
+#### Déroulement
+
+1. **Interception de la requête**  
+   La requête est capturée par le **Worker Route Sunray** sur Cloudflare.
+
+2. **Vérification de l’AccessToken**  
+   Le Worker cherche un cookie `AccessToken` signé ; si absent, invalide ou expiré (60 s), il redirige vers la page d’authentification.
+
+3. **Page d’authentification**  
+   - Saisie de l’email.  
+   - Création d’un **AccessRequest** (IP source, email, site cible).  
+   - Envoi d’un e‑mail contenant des liens : *Refuser*, *Autoriser 1 h / 4 h / 12 h*.
+
+4. **Validation par e‑mail + PIN**  
+   - L’utilisateur clique sur le lien.  
+   - Le Worker affiche un formulaire demandant le **code PIN** (ou PIN sous contrainte).  
+   - Trois échecs consécutifs ⇒ alerte + révocation + blocage temporel.
+
+5. **Émission et renouvellement du token**  
+   - PIN valide ⇒ le Worker émet un `AccessToken` (JWT signé) de 60 s, stocké en cookie `Secure` + `HttpOnly`.  
+   - Tant que la *session autorisée* (1 h / 4 h / 12 h) est valide et l’IP inchangée, le Worker renouvelle automatiquement le token (rolling token).
+
+#### Synthèse des garanties
+
+- Domaine, IP et fenêtre temporelle strictement contrôlés.  
+- Second facteur PIN, avec variante sous contrainte pour signaler la coercition.  
+- Aucun logiciel à installer côté utilisateur.
+
+#### Comparatif de robustesse et de sécurité
+
+| Critère                                 | Cloudflare Access                     | Sunray (mode sans extension)                                              | Sunray (avec extension)                                                  |
+|----------------------------------------|---------------------------------------|---------------------------------------------------------------------------|---------------------------------------------------------------------------|
+| **Type d’authentification initiale**   | Basée sur IdP externe (SSO)           | Email + validation par code PIN                                          | Authentification par clé privée (extension)                              |
+| **Jeton autoporteur**                  | Oui (JWT)                             | Oui (JWT ou token signé), durée courte                                   | Non (requêtes signées à la volée)                                        |
+| **Durée de validité du jeton**         | Jusqu’à 24 h                          | 60 s, renouvelé automatiquement                                          | N/A (chaque requête est validée par signature)                           |
+| **Renouvellement du jeton**            | Aucun, nécessite reconnexion          | Rolling token tant que la session reste valide                           | N/A                                                                       |
+| **Vérification de l’IP source**        | Non                                   | Oui                                                                       | Optionnelle                                                               |
+| **Ciblage par domaine (`aud`)**        | Oui                                   | Oui                                                                       | Implémenté via filtrage d’URL dans l’extension                           |
+| **Stockage côté client**               | Cookie sécurisé (`HttpOnly`, `Secure`)| Identique                                                                 | Clé privée stockée dans l’extension (localStorage ou WebCrypto)          |
+| **Protection contre vol de jeton**     | Faible (jeton utilisable tel quel)    | Renforcée (IP + durée courte)                                            | Très forte (aucun jeton exposé, clé privée non exportable)               |
+| **Protection contre vol de lien d’accès**| Non (lien suffit)                    | Oui (code PIN requis pour valider l’accès)                               | N/A                                                                       |
+| **Protection contre phishing actif**   | Dépend du SSO                         | Partielle : code PIN protège, mais page fausse peut le voler             | Forte (authentification silencieuse, sans interaction manuelle)          |
+| **Mécanisme de signal de détresse**    | Non                                   | Oui (code PIN sous contrainte)                                           | Optionnel (via UI de l’extension)                                        |
+| **Détection de tentatives d’intrusion**| Non intégré                           | Oui (PIN erroné → alerte + blocage)                                      | Forte (tentatives de signature anormales détectables localement)         |
+| **Indépendance vis-à-vis d’un IdP**    | Non (dépend d’un fournisseur SSO)     | Oui (base de données interne, profils locaux)                            | Oui                                                                       |
+| **Matériel ou extension requis**       | Non                                   | Non                                                                       | Oui (extension navigateur installée)                                     |
+| **Simplicité d’usage utilisateur**     | Très fluide (SSO, peu d’interactions) | Fluide, mais nécessite une validation par mail et saisie de PIN          | Très fluide (aucune interaction utilisateur après installation)          |
+| **Souveraineté et maîtrise des données** | Faible (Cloudflare centralise tout) | Forte (clé privée et validation locale dans le Worker)                   | Très forte (clé privée sur le poste utilisateur, contrôle total local)   |
 
 ## 🗂 Exemple de fichier de configuration YAML côté Worker
 
