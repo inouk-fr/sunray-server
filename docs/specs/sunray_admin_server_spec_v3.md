@@ -2,7 +2,9 @@
 
 ## 🎯 Overview
 
-The **Sunray Admin Server** is an Odoo 18 addon that provides centralized configuration management, user administration, and setup token generation for the Muppy Sunray authentication system. It serves as the backend API for Cloudflare Workers and includes a web interface for administrators.
+> **Prerequisites**: Read the [Sunray Introduction](../sunray_introduction.md) for core concepts and authentication flow.
+
+The **Sunray Admin Server** is the `Admin Server` component implemented as an Odoo 18 addon. It provides the configuration management, user administration, and `Setup Token` generation described in the introduction. This specification covers the technical implementation details.
 
 ## 🏗️ Architecture
 
@@ -147,17 +149,136 @@ class SunrayHost(models.Model):
     backend_url = fields.Char(string='Backend URL', required=True)
     active = fields.Boolean(default=True)
     
-    # Access control
+    # Security Exceptions (whitelist approach)
+    # Default: Everything requires passkey authentication
+    
+    # CIDR-based exceptions (bypass all authentication)
+    allowed_cidrs = fields.Text(string='Allowed CIDR Blocks (JSON)', 
+                               default='[]',
+                               help='CIDR blocks that bypass all authentication (e.g., office networks)')
+    
+    # URL-based public exceptions  
+    public_url_patterns = fields.Text(string='Public URL Patterns (JSON)', 
+                                     default='[]',
+                                     help='URL regex patterns that allow unrestricted public access')
+    
+    # URL-based token exceptions
+    token_url_patterns = fields.Text(string='Token-Protected URL Patterns (JSON)', 
+                                    default='[]',
+                                    help='URL regex patterns that accept token authentication instead of passkeys')
+    
+    # Webhook Authentication
+    webhook_tokens = fields.One2many('sunray.webhook.token', 'host_id', string='Webhook Tokens')
+    webhook_header_name = fields.Char(string='Webhook Header Name', default='X-Webhook-Token')
+    webhook_param_name = fields.Char(string='Webhook URL Parameter', default='token')
+    
+    # Access control  
     user_ids = fields.Many2many('sunray.user', string='Authorized Users')
     allowed_ips = fields.Text(string='Allowed IPs (JSON)', default='[]')
     
-    # Overrides
+    # Session overrides
     session_duration = fields.Integer(string='Session Duration (seconds)')
     require_mfa = fields.Boolean(string='Require MFA', default=False)
     
     _sql_constraints = [
         ('domain_unique', 'UNIQUE(domain)', 'Domain must be unique!')
     ]
+    
+    def _get_allowed_cidrs(self):
+        """Parse allowed CIDR blocks from JSON"""
+        return json.loads(self.allowed_cidrs or '[]')
+    
+    def _get_public_url_patterns(self):
+        """Parse public URL patterns from JSON"""  
+        return json.loads(self.public_url_patterns or '[]')
+    
+    def _get_token_url_patterns(self):
+        """Parse token URL patterns from JSON"""
+        return json.loads(self.token_url_patterns or '[]')
+    
+    def check_access_requirements(self, client_ip, url_path):
+        """
+        Determine access requirements for a request
+        Security-first approach: Everything locked by default
+        
+        Returns:
+        - 'cidr_allowed': IP is in allowed CIDR, bypass all auth
+        - 'public': URL matches public pattern, no auth required  
+        - 'token': URL matches token pattern, token auth required
+        - 'passkey': Default - passkey authentication required
+        """
+        import ipaddress
+        import re
+        
+        # 1. Check CIDR exceptions first (highest priority)
+        if client_ip:
+            try:
+                client = ipaddress.ip_address(client_ip)
+                for cidr_str in self._get_allowed_cidrs():
+                    if client in ipaddress.ip_network(cidr_str, strict=False):
+                        return 'cidr_allowed'
+            except (ValueError, ipaddress.AddressValueError):
+                # Invalid IP format, continue with other checks
+                pass
+        
+        # 2. Check public URL exceptions
+        for pattern in self._get_public_url_patterns():
+            if re.match(pattern, url_path):
+                return 'public'
+        
+        # 3. Check token URL exceptions  
+        for pattern in self._get_token_url_patterns():
+            if re.match(pattern, url_path):
+                return 'token'
+        
+        # 4. Default: Require passkey authentication
+        return 'passkey'
+```
+
+### sunray.webhook.token
+
+```python
+class SunrayWebhookToken(models.Model):
+    _name = 'sunray.webhook.token'
+    _description = 'Webhook Authentication Token'
+    
+    host_id = fields.Many2one('sunray.host', required=True, ondelete='cascade')
+    name = fields.Char(string='Token Name', required=True)
+    token = fields.Char(string='Token Value', required=True, index=True)
+    active = fields.Boolean(default=True)
+    created_date = fields.Datetime(default=fields.Datetime.now)
+    last_used = fields.Datetime()
+    usage_count = fields.Integer(default=0)
+    
+    # Optional restrictions
+    allowed_ips = fields.Text(string='Allowed IPs (JSON)', default='[]')
+    expires_at = fields.Datetime(string='Expiration Date')
+    
+    _sql_constraints = [
+        ('token_unique', 'UNIQUE(token)', 'Token must be unique!')
+    ]
+    
+    def generate_token(self):
+        """Generate a secure random token"""
+        import secrets
+        import string
+        alphabet = string.ascii_letters + string.digits
+        self.token = ''.join(secrets.choice(alphabet) for _ in range(32))
+    
+    def is_valid(self, client_ip=None):
+        """Check if token is valid and authorized"""
+        if not self.active:
+            return False
+        
+        if self.expires_at and self.expires_at < fields.Datetime.now():
+            return False
+        
+        if client_ip and self.allowed_ips:
+            allowed_ips = json.loads(self.allowed_ips or '[]')
+            if allowed_ips and client_ip not in allowed_ips:
+                return False
+        
+        return True
 ```
 
 ### sunray.audit.log
@@ -255,13 +376,35 @@ def get_config(self, **kwargs):
     # Add hosts
     hosts = request.env['sunray.host'].sudo().search([('active', '=', True)])
     for host in hosts:
-        config['hosts'].append({
+        host_config = {
             'domain': host.domain,
             'backend': host.backend_url,
             'authorized_users': host.user_ids.mapped('username'),
             'allowed_ips': json.loads(host.allowed_ips or '[]'),
-            'session_duration_override': host.session_duration
-        })
+            'session_duration_override': host.session_duration,
+            
+            # Security exceptions (whitelist approach)
+            'allowed_cidrs': json.loads(host.allowed_cidrs or '[]'),
+            'public_url_patterns': json.loads(host.public_url_patterns or '[]'),
+            'token_url_patterns': json.loads(host.token_url_patterns or '[]'),
+            
+            # Token authentication configuration
+            'webhook_header_name': host.webhook_header_name,
+            'webhook_param_name': host.webhook_param_name,
+            'webhook_tokens': []
+        }
+        
+        # Add active webhook tokens
+        for token in host.webhook_tokens.filtered('active'):
+            if token.is_valid():
+                host_config['webhook_tokens'].append({
+                    'token': token.token,
+                    'name': token.name,
+                    'allowed_ips': json.loads(token.allowed_ips or '[]'),
+                    'expires_at': token.expires_at.isoformat() if token.expires_at else None
+                })
+        
+        config['hosts'].append(host_config)
     
     return config
 ```

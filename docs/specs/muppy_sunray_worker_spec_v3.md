@@ -2,11 +2,13 @@
 
 ## 🌞 Overview
 
-The **Muppy Sunray Worker** is a Cloudflare Worker that provides secure, passwordless authentication for HTTP services using WebAuthn passkeys. It acts as a reverse proxy, validating user authentication before forwarding requests to backend services.
+> **Prerequisites**: Read the [Sunray Introduction](../sunray_introduction.md) for core concepts and authentication flow.
+
+The **Muppy Sunray Worker** is the `Cloudflare Worker` component that implements the authentication logic described in the introduction. This specification covers the technical implementation details.
 
 **Available in two editions:**
-- **Sunray (Free)**: Complete authentication system with manual token delivery
-- **Sunray Advanced (Paid)**: Enhanced with automation, MFA, advanced policies, and enterprise integrations
+- **Sunray (Free)**: Core authentication with manual `Setup Token` delivery
+- **Sunray Advanced (Paid)**: Enhanced with automation, advanced policies, and enterprise integrations
 
 ## 🏗️ Architecture
 
@@ -19,52 +21,407 @@ graph LR
     W -->|5. Verify & Proxy| B[Backend Service]
 ```
 
-## 🔐 Authentication Flows
+## 🔐 Technical Implementation Flow
 
-### First-Time Setup Flow
+> **Note**: For the conceptual flow, see the [Introduction](../sunray_introduction.md#-authentication-flow). This section covers implementation details.
 
-1. User visits `https://{domain}/setup`
-2. Worker serves setup form
-3. User enters username and one-time token
-4. Worker validates token hash with Admin Server
-5. Worker serves WebAuthn registration page
-6. User creates passkey with biometric/PIN
-7. Worker sends credential to Admin Server
-8. Session cookie established
+```mermaid
+graph TD
+    A[User visits target-site.domain.com] --> B[Worker intercepts request]
+    B --> C[Check access requirements<br/>Security-first approach]
+    C --> D{Client IP in<br/>allowed CIDRs?}
+    D -->|Yes| E[CIDR bypass - Proxy to backend]
+    D -->|No| F{URL matches<br/>public patterns?}
+    F -->|Yes| G[Public access - Proxy to backend] 
+    F -->|No| H{URL matches<br/>token patterns?}
+    H -->|Yes| I[Check for valid token]
+    I --> J{Token valid?}
+    J -->|Yes| K[Token auth - Proxy to backend]
+    J -->|No| L[Return 401 Unauthorized]
+    H -->|No| M[Passkey required - Check session]
+    M --> N{Session cookie valid?}
+    N -->|Yes| O[Authenticated - Proxy to backend]
+    N -->|No| P[Check if user exists]
+    P --> Q{User exists?}
+    Q -->|No| R[Serve Setup Page]
+    Q -->|Yes| S[Serve Login Page]
+    R --> T[Complete passkey setup]
+    S --> U[Passkey authentication]
+    T --> V[Set session cookie]
+    U --> V
+    V --> W[Proxy to backend]
+```
 
-### Authentication Flow (Returning Users)
+### Implementation Details
 
-1. User visits protected resource
-2. Worker checks session cookie
-3. If invalid/missing, redirect to `/auth/login`
-4. Worker serves passkey authentication page
-5. User authenticates with passkey
-6. Worker verifies signature
-7. New session cookie established
-8. Original request proxied to backend
+**Request Processing Priority Order:**
+
+**1. CIDR Check:**
+```javascript
+if (isIPInCIDR(clientIP, host.allowed_cidrs)) {
+  return proxyToBackend(request, { type: 'cidr_bypass', ip: clientIP });
+}
+```
+
+**2. URL Pattern Matching:**
+```javascript
+// Public patterns (no auth)
+if (matchesPattern(urlPath, host.public_url_patterns)) {
+  return proxyToBackend(request, { type: 'public' });
+}
+
+// Token patterns (token auth)
+if (matchesPattern(urlPath, host.token_url_patterns)) {
+  return handleTokenAuth(request, host);
+}
+```
+
+**3. Session Validation:**
+```javascript
+const sessionCookie = getCookie(request, 'sunray_session');
+const sessionData = await SESSIONS.get(`session:${sessionCookie}`);
+if (sessionData && isValidSession(sessionData)) {
+  return proxyToBackend(request, { type: 'passkey', ...sessionData });
+}
+```
+
+**4. Authentication Pages:**
+```javascript
+const userExists = await checkUserExists(username);
+if (!userExists) {
+  return serveSetupPage();  // New user registration
+} else {
+  return serveLoginPage();  // Existing user login
+}
+```
 
 ## 📋 Worker Endpoints
 
-### Public Endpoints
+### Primary Endpoint
 
 | Path | Method | Description |
 |------|--------|-------------|
-| `/setup` | GET | Setup form for first-time users |
-| `/setup/validate` | POST | Validate setup token |
-| `/setup/register` | POST | Complete WebAuthn registration |
-| `/auth/login` | GET | Passkey login page |
-| `/auth/challenge` | POST | Get WebAuthn challenge |
-| `/auth/verify` | POST | Verify passkey assertion |
-| `/auth/logout` | POST | Clear session |
+| `/*` | ALL | **Main intercept endpoint** - handles all requests with unified flow |
+
+The Worker intercepts all requests to the protected domain and determines the appropriate response:
+- **Valid session** → Proxy to backend
+- **New user** → Serve setup page 
+- **Existing user** → Serve login page
+
+### Internal API Endpoints
+
+| Path | Method | Description |
+|------|--------|-------------|
+| `/sunray/v1/setup/validate` | POST | Validate setup token and store user |
+| `/sunray/v1/setup/register` | POST | Complete WebAuthn registration |
+| `/sunray/v1/auth/challenge` | POST | Get WebAuthn authentication challenge |
+| `/sunray/v1/auth/verify` | POST | Verify passkey assertion and create session |
+| `/sunray/v1/auth/logout` | POST | Clear session cookie |
 
 ### Admin Endpoints
 
 | Path | Method | Description |
 |------|--------|-------------|
-| `/api/cache/invalidate` | POST | Force config cache refresh |
-| `/api/health` | GET | Health check endpoint |
+| `/sunray/v1/admin/cache/invalidate` | POST | Force configuration cache refresh |
+| `/sunray/v1/admin/health` | GET | Health check and status endpoint |
+
+**Note**: All Sunray internal endpoints use the `/sunray/v1/` prefix for API versioning and to avoid conflicts with backend application routes.
 
 ## 🔧 Implementation Details
+
+### Main Request Handler
+
+```javascript
+export default {
+  async fetch(request, env, ctx) {
+    try {
+      const url = new URL(request.url);
+      
+      // Handle Sunray internal endpoints
+      if (url.pathname.startsWith('/sunray/v1/')) {
+        return handleSunrayEndpoint(request, env, ctx);
+      }
+      
+      // Main unified authentication flow
+      return handleUnifiedFlow(request, env, ctx);
+      
+    } catch (error) {
+      console.error('Worker error:', error);
+      return new Response('Internal Server Error', { status: 500 });
+    }
+  }
+};
+
+async function handleUnifiedFlow(request, env, ctx) {
+  const url = new URL(request.url);
+  const config = await getConfig();
+  const host = findHostConfig(config, request.url);
+  
+  if (!host) {
+    // Domain not configured - reject
+    return new Response('Domain not configured', { status: 404 });
+  }
+  
+  // 1. Determine access requirements (security-first approach)
+  const clientIP = request.headers.get('CF-Connecting-IP');
+  const accessRequirement = determineAccessRequirement(clientIP, url.pathname, host);
+  
+  if (accessRequirement === 'cidr_allowed') {
+    // CIDR exception - bypass all authentication
+    return proxyToBackend(request, { type: 'cidr_bypass', ip: clientIP }, host, env);
+  }
+  
+  if (accessRequirement === 'public') {
+    // Public URL exception - no authentication required
+    return proxyToBackend(request, { type: 'public' }, host, env);
+  }
+  
+  if (accessRequirement === 'token') {
+    // Token URL exception - check for token authentication
+    const tokenAuth = await checkTokenAuth(request, host, env);
+    if (tokenAuth.valid) {
+      return proxyToBackend(request, { type: 'token', ...tokenAuth }, host, env);
+    } else {
+      return new Response('Unauthorized - Valid token required', { status: 401 });
+    }
+  }
+  
+  // 2. Default case: Passkey authentication required
+  // Check for existing session cookie
+  const sessionCookie = getCookie(request, 'sunray_session');
+  
+  if (sessionCookie) {
+    const sessionData = await env.SESSIONS.get(`session:${sessionCookie}`);
+    if (sessionData) {
+      const session = JSON.parse(sessionData);
+      
+      // Validate session policies  
+      if (validateSessionPolicy(request, session, host)) {
+        // Valid session - proxy to backend
+        return proxyToBackend(request, { type: 'passkey', ...session }, host, env);
+      }
+    }
+  }
+  
+  // 3. No valid session - serve authentication pages
+  const userIdentifier = extractUserIdentifier(request, host);
+  const userExists = await checkUserExists(userIdentifier, env);
+  
+  if (!userExists) {
+    // New user - serve setup page
+    return serveSetupPage(request, host);
+  } else {
+    // Existing user - serve login page
+    return serveLoginPage(request, host, userIdentifier);
+  }
+}
+
+function determineAccessRequirement(clientIP, urlPath, host) {
+  /**
+   * Determine access requirements using security-first whitelist approach
+   * Default: Everything requires passkey authentication
+   * 
+   * Returns:
+   * - 'cidr_allowed': Client IP is in allowed CIDR blocks
+   * - 'public': URL matches public pattern exception
+   * - 'token': URL matches token pattern exception  
+   * - 'passkey': Default - passkey authentication required
+   */
+  
+  // 1. Check CIDR exceptions (highest priority)
+  if (clientIP && host.allowed_cidrs) {
+    for (const cidr of host.allowed_cidrs) {
+      if (isIPInCIDR(clientIP, cidr)) {
+        return 'cidr_allowed';
+      }
+    }
+  }
+  
+  // 2. Check public URL exceptions
+  if (host.public_url_patterns) {
+    for (const pattern of host.public_url_patterns) {
+      if (new RegExp(pattern).test(urlPath)) {
+        return 'public';
+      }
+    }
+  }
+  
+  // 3. Check token URL exceptions
+  if (host.token_url_patterns) {
+    for (const pattern of host.token_url_patterns) {
+      if (new RegExp(pattern).test(urlPath)) {
+        return 'token';
+      }
+    }
+  }
+  
+  // 4. Default: Require passkey authentication
+  return 'passkey';
+}
+
+function isIPInCIDR(ip, cidr) {
+  /**
+   * Check if IP address is within CIDR block
+   * Simple implementation for Worker environment
+   */
+  try {
+    const [network, prefixLength] = cidr.split('/');
+    const prefix = parseInt(prefixLength, 10);
+    
+    // Convert IP addresses to 32-bit integers
+    const ipToInt = (ip) => {
+      return ip.split('.').reduce((int, octet) => (int << 8) + parseInt(octet, 10), 0) >>> 0;
+    };
+    
+    const ipInt = ipToInt(ip);
+    const networkInt = ipToInt(network);
+    const mask = (-1 << (32 - prefix)) >>> 0;
+    
+    return (ipInt & mask) === (networkInt & mask);
+  } catch (error) {
+    console.error('CIDR check error:', error);
+    return false;
+  }
+}
+
+async function checkTokenAuth(request, host, env) {
+  /**
+   * Check for token authentication via header or URL parameter
+   */
+  const url = new URL(request.url);
+  let token = null;
+  
+  // Check URL parameter first
+  if (host.webhook_param_name) {
+    token = url.searchParams.get(host.webhook_param_name);
+  }
+  
+  // Check header if no URL parameter
+  if (!token && host.webhook_header_name) {
+    token = request.headers.get(host.webhook_header_name);
+  }
+  
+  if (!token) {
+    return { valid: false, reason: 'No token provided' };
+  }
+  
+  // Find matching token in host configuration
+  const validToken = host.webhook_tokens?.find(t => t.token === token);
+  
+  if (!validToken) {
+    return { valid: false, reason: 'Invalid token' };
+  }
+  
+  // Check IP restrictions if configured
+  const clientIP = request.headers.get('CF-Connecting-IP');
+  if (validToken.allowed_ips?.length > 0 && !validToken.allowed_ips.includes(clientIP)) {
+    return { valid: false, reason: 'IP not allowed' };
+  }
+  
+  // Check expiration
+  if (validToken.expires_at && new Date(validToken.expires_at) < new Date()) {
+    return { valid: false, reason: 'Token expired' };
+  }
+  
+  // Update usage tracking via Admin Server (async, don't wait)
+  trackWebhookUsage(token, clientIP, env).catch(console.error);
+  
+  return {
+    valid: true,
+    tokenName: validToken.name,
+    token: token
+  };
+}
+
+async function trackWebhookUsage(token, clientIP, env) {
+  /**
+   * Track webhook token usage via Admin Server
+   */
+  try {
+    await fetch(`${env.ADMIN_API_ENDPOINT}/api/v1/webhooks/track-usage`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.ADMIN_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        token,
+        client_ip: clientIP,
+        timestamp: new Date().toISOString()
+      })
+    });
+  } catch (error) {
+    console.error('Failed to track webhook usage:', error);
+  }
+}
+
+function extractUserIdentifier(request, host) {
+  // Extract user identifier from subdomain, header, or other configured method
+  const url = new URL(request.url);
+  
+  if (host.user_identification === 'subdomain') {
+    return url.hostname.split('.')[0];
+  }
+  
+  if (host.user_identification === 'header') {
+    return request.headers.get(host.user_header || 'X-Username');
+  }
+  
+  // Default: prompt for username in setup/login
+  return null;
+}
+
+async function checkUserExists(userIdentifier, env) {
+  if (!userIdentifier) return false;
+  
+  try {
+    const response = await fetch(`${env.ADMIN_API_ENDPOINT}/api/v1/users/check`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.ADMIN_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ username: userIdentifier })
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      return result.exists;
+    }
+  } catch (error) {
+    console.error('Error checking user existence:', error);
+  }
+  
+  return false;
+}
+
+function serveSetupPage(request, host) {
+  return new Response(SETUP_HTML, {
+    headers: {
+      'Content-Type': 'text/html',
+      'Cache-Control': 'no-cache, no-store, must-revalidate'
+    }
+  });
+}
+
+function serveLoginPage(request, host, userIdentifier) {
+  const loginHtml = LOGIN_HTML.replace('{{USERNAME}}', userIdentifier || '');
+  return new Response(loginHtml, {
+    headers: {
+      'Content-Type': 'text/html',
+      'Cache-Control': 'no-cache, no-store, must-revalidate'
+    }
+  });
+}
+
+function getCookie(request, name) {
+  const cookies = request.headers.get('Cookie');
+  if (!cookies) return null;
+  
+  const match = cookies.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return match ? match[1] : null;
+}
+```
 
 ### Environment Variables
 
@@ -328,30 +685,64 @@ async function checkRateLimit(request, username) {
 ### Request Proxying
 
 ```javascript
-async function proxyRequest(request, backendUrl, user, sessionData) {
-  // Rate limiting check (Advanced only)
-  const rateLimitResult = await checkRateLimit(request, user.username);
-  if (!rateLimitResult.allowed) {
-    return new Response('Rate limit exceeded', { 
-      status: 429,
-      headers: { 'Retry-After': '60' }
-    });
+async function proxyToBackend(request, authData, host, env) {
+  const backendUrl = host.backend.replace(/\/$/, '') + new URL(request.url).pathname + new URL(request.url).search;
+  
+  // Rate limiting check (Advanced only) - skip for public/webhook access
+  if (authData && authData.username) {
+    const rateLimitResult = await checkRateLimit(request, authData.username);
+    if (!rateLimitResult.allowed) {
+      return new Response('Rate limit exceeded', { 
+        status: 429,
+        headers: { 'Retry-After': '60' }
+      });
+    }
   }
   
   // Clone request with backend URL
   const proxyRequest = new Request(backendUrl, request);
   
-  // Add authentication headers
+  // Add headers based on authentication type
   const headers = new Headers(proxyRequest.headers);
-  headers.set('X-Sunray-User', user.username);
-  headers.set('X-Sunray-Email', user.email);
-  headers.set('X-Sunray-Authenticated', 'true');
-  headers.set('X-Sunray-Edition', SUNRAY_EDITION);
   
-  // Advanced headers
-  if (FEATURES.advanced_sessions) {
-    headers.set('X-Sunray-Session-ID', sessionData.sessionId);
-    headers.set('X-Sunray-Device-Trusted', sessionData.deviceTrusted.toString());
+  // Common headers
+  headers.set('X-Sunray-Edition', env.SUNRAY_EDITION);
+  headers.set('X-Sunray-Access-Type', authData?.type || 'unknown');
+  
+  switch (authData?.type) {
+    case 'cidr_bypass':
+      // CIDR bypass - IP was in allowed range
+      headers.set('X-Sunray-Bypass-Reason', 'allowed_cidr');
+      headers.set('X-Sunray-Client-IP', authData.ip);
+      break;
+      
+    case 'public':
+      // Public URL exception - no authentication required
+      headers.set('X-Sunray-Bypass-Reason', 'public_url');
+      break;
+      
+    case 'token':
+      // Token authentication
+      headers.set('X-Sunray-Token-Name', authData.tokenName || 'unknown');
+      headers.set('X-Sunray-Authenticated', 'token');
+      break;
+      
+    case 'passkey':
+      // User passkey authentication
+      headers.set('X-Sunray-User', authData.username || '');
+      headers.set('X-Sunray-Email', authData.email || '');
+      headers.set('X-Sunray-Authenticated', 'true');
+      
+      // Advanced session headers
+      if (FEATURES.advanced_sessions && authData.sessionId) {
+        headers.set('X-Sunray-Session-ID', authData.sessionId);
+        headers.set('X-Sunray-Device-Trusted', authData.deviceTrusted?.toString() || 'false');
+      }
+      break;
+      
+    default:
+      // Fallback case
+      headers.set('X-Sunray-Authenticated', 'false');
   }
   
   // Forward request
@@ -364,7 +755,9 @@ async function proxyRequest(request, backendUrl, user, sessionData) {
   if (FEATURES.security_alerts && response.status >= 400) {
     await logSecurityEvent({
       type: 'backend_error',
-      user: user.username,
+      user: authData?.username || 'anonymous',
+      access_type: authData?.type || 'unknown',
+      client_ip: authData?.ip || request.headers.get('CF-Connecting-IP'),
       status: response.status,
       url: backendUrl
     });
@@ -390,6 +783,129 @@ async function proxyRequest(request, backendUrl, user, sessionData) {
 ### HTML Templates
 
 ```javascript
+const SETUP_HTML = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Set up your account - Muppy Sunray</title>
+  <style>
+    body { font-family: system-ui; max-width: 400px; margin: 100px auto; padding: 20px; }
+    input, button { width: 100%; padding: 15px; font-size: 16px; margin: 10px 0; box-sizing: border-box; }
+    button { background: #0066cc; color: white; border: none; cursor: pointer; }
+    button:hover { background: #0052a3; }
+    .error { color: red; margin: 10px 0; }
+    .step { display: none; }
+    .step.active { display: block; }
+  </style>
+</head>
+<body>
+  <div id="step1" class="step active">
+    <h1>Set up your account</h1>
+    <p>Enter your username and setup token to create your passkey.</p>
+    <form onsubmit="validateToken(event)">
+      <input type="text" id="username" placeholder="Username" required>
+      <input type="text" id="token" placeholder="Setup Token" required>
+      <button type="submit">Continue</button>
+    </form>
+    <div id="error1" class="error"></div>
+  </div>
+  
+  <div id="step2" class="step">
+    <h1>Create your passkey</h1>
+    <p>Create a passkey to secure your account. You'll use your biometric or device PIN.</p>
+    <button onclick="createPasskey()">Create Passkey</button>
+    <div id="error2" class="error"></div>
+  </div>
+  
+  <script>
+    let username = '';
+    
+    async function validateToken(event) {
+      event.preventDefault();
+      
+      username = document.getElementById('username').value;
+      const token = document.getElementById('token').value;
+      
+      try {
+        const response = await fetch('/sunray/v1/setup/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, token })
+        });
+        
+        if (response.ok) {
+          // Show step 2
+          document.getElementById('step1').classList.remove('active');
+          document.getElementById('step2').classList.add('active');
+        } else {
+          const error = await response.text();
+          document.getElementById('error1').textContent = error;
+        }
+      } catch (e) {
+        document.getElementById('error1').textContent = 'Connection error. Please try again.';
+      }
+    }
+    
+    async function createPasskey() {
+      try {
+        // Get registration options
+        const optionsResponse = await fetch('/sunray/v1/setup/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, step: 'options' })
+        });
+        
+        if (!optionsResponse.ok) throw new Error('Failed to get options');
+        
+        const options = await optionsResponse.json();
+        
+        // Create credential
+        const credential = await navigator.credentials.create({
+          publicKey: {
+            ...options,
+            user: {
+              ...options.user,
+              id: new TextEncoder().encode(options.user.id)
+            },
+            challenge: new Uint8Array(options.challenge)
+          }
+        });
+        
+        // Send credential to server
+        const registerResponse = await fetch('/sunray/v1/setup/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username,
+            step: 'verify',
+            credential: {
+              id: credential.id,
+              rawId: Array.from(new Uint8Array(credential.rawId)),
+              response: {
+                clientDataJSON: Array.from(new Uint8Array(credential.response.clientDataJSON)),
+                attestationObject: Array.from(new Uint8Array(credential.response.attestationObject))
+              },
+              type: credential.type
+            }
+          })
+        });
+        
+        if (registerResponse.ok) {
+          // Reload to complete setup
+          window.location.reload();
+        } else {
+          throw new Error('Registration failed');
+        }
+        
+      } catch (error) {
+        document.getElementById('error2').textContent = error.message || 'Passkey creation failed. Please try again.';
+      }
+    }
+  </script>
+</body>
+</html>`;
+
 const LOGIN_HTML = `<!DOCTYPE html>
 <html>
 <head>
@@ -411,7 +927,7 @@ const LOGIN_HTML = `<!DOCTYPE html>
     async function authenticate() {
       try {
         // Get challenge
-        const challengeResp = await fetch('/auth/challenge', { method: 'POST' });
+        const challengeResp = await fetch('/sunray/v1/auth/challenge', { method: 'POST' });
         const options = await challengeResp.json();
         
         // Convert base64 to ArrayBuffer
@@ -421,7 +937,7 @@ const LOGIN_HTML = `<!DOCTYPE html>
         const credential = await navigator.credentials.get({ publicKey: options });
         
         // Send to server
-        const verifyResp = await fetch('/auth/verify', {
+        const verifyResp = await fetch('/sunray/v1/auth/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -470,6 +986,133 @@ const LOGIN_HTML = `<!DOCTYPE html>
   </script>
 </body>
 </html>`;
+```
+
+## ⚙️ Configuration Examples
+
+> **Note**: For security concepts, see [Introduction - Authentication Flow](../sunray_introduction.md#-authentication-flow). Below are technical configuration examples.
+
+### Basic Corporate Site
+Entire website locked for employees only:
+
+```json
+{
+  "domain": "admin.example.com",
+  "backend": "http://internal.example.com",
+  "authorized_users": ["admin", "manager"],
+  "allowed_cidrs": [],
+  "public_url_patterns": [],
+  "token_url_patterns": []
+}
+```
+
+### Corporate Site with Office Network Exception
+Bypass authentication from office networks:
+
+```json
+{
+  "domain": "intranet.company.com",
+  "backend": "http://sharepoint.internal.com",
+  "authorized_users": ["employee1", "employee2"],
+  "allowed_cidrs": [
+    "192.168.1.0/24",    // Main office
+    "10.0.0.0/16",       // Branch offices  
+    "172.16.5.0/24"      // Remote office
+  ],
+  "public_url_patterns": [],
+  "token_url_patterns": []
+}
+```
+
+### E-commerce with Public Storefront
+Most URLs locked, but storefront is public:
+
+```json
+{
+  "domain": "shop.example.com", 
+  "backend": "http://magento.internal.com",
+  "authorized_users": ["shop_admin", "manager"],
+  "allowed_cidrs": ["192.168.100.0/24"],  // Office network
+  "public_url_patterns": [
+    "^/$",                    // Homepage
+    "^/products/.*",         // Product pages
+    "^/category/.*",         // Category pages
+    "^/cart$",               // Shopping cart
+    "^/checkout$",           // Checkout
+    "^/assets/.*",           // Static assets
+    "^/api/catalog/.*"       // Public catalog API
+  ],
+  "token_url_patterns": [
+    "^/webhooks/payment/.*"  // Payment webhooks
+  ]
+}
+```
+
+### SaaS Platform with Marketing Site
+Marketing pages public, app requires authentication:
+
+```json
+{
+  "domain": "myapp.com",
+  "backend": "http://django.internal.com", 
+  "authorized_users": ["customer1", "customer2"],
+  "allowed_cidrs": [],
+  "public_url_patterns": [
+    "^/$",                     // Landing page
+    "^/features$",             // Features page
+    "^/pricing$",              // Pricing page
+    "^/docs/.*",               // Documentation
+    "^/blog/.*",               // Blog
+    "^/assets/.*"              // Static assets
+  ],
+  "token_url_patterns": [
+    "^/api/webhooks/.*",       // Customer webhooks
+    "^/integrations/.*"        // Third-party integrations
+  ]
+}
+```
+
+### API-First Service with Webhooks
+Most endpoints require tokens, some URLs need user auth:
+
+```json
+{
+  "domain": "api.service.com",
+  "backend": "http://api.internal.com",
+  "authorized_users": ["admin"],
+  "allowed_cidrs": ["192.168.0.0/16"],  // Office network
+  "public_url_patterns": [
+    "^/health$",               // Health check
+    "^/docs/.*",               // API documentation
+    "^/swagger.*"              // Swagger UI
+  ],
+  "token_url_patterns": [
+    "^/api/v1/.*",            // Main API endpoints
+    "^/webhooks/.*"           // Webhook endpoints  
+  ]
+}
+```
+
+### GitLab/GitHub Style Platform
+Code repos public, admin areas locked:
+
+```json
+{
+  "domain": "git.company.com", 
+  "backend": "http://gitlab.internal.com",
+  "authorized_users": ["admin", "devops"],
+  "allowed_cidrs": ["10.0.0.0/8"],      // Corporate network
+  "public_url_patterns": [
+    "^/[^/]+/[^/]+$",         // Project pages  
+    "^/[^/]+/[^/]+/blob/.*",  // File browser
+    "^/[^/]+/[^/]+/tree/.*",  // Directory browser
+    "^/assets/.*"             // Static assets
+  ],
+  "token_url_patterns": [
+    "^/api/.*",               // Git API with tokens
+    "^/hooks/.*"              // Webhook endpoints
+  ]
+}
 ```
 
 ## 🚀 Deployment
