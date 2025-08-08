@@ -18,13 +18,11 @@ graph TB
 
 ## 📦 Odoo Module Structure
 
+### **Free Edition: `sunray_core`**
 ```
-sunray_admin/
+sunray_core/
 ├── __init__.py
 ├── __manifest__.py
-├── security/
-│   ├── ir.model.access.csv
-│   └── sunray_security.xml
 ├── models/
 │   ├── __init__.py
 │   ├── sunray_user.py
@@ -43,8 +41,44 @@ sunray_admin/
 ├── wizards/
 │   ├── __init__.py
 │   └── setup_token_wizard.py
+├── security/
+│   ├── ir.model.access.csv
+│   └── sunray_security.xml
 ├── data/
 │   └── sunray_data.xml
+└── static/
+    └── description/
+        └── icon.png
+```
+
+### **Advanced Edition: `sunray_enterprise`** 
+```
+sunray_enterprise/
+├── __init__.py
+├── __manifest__.py          # Depends: ['sunray_core']
+├── models/
+│   ├── __init__.py
+│   ├── sunray_user.py       # Extend with advanced features
+│   ├── sunray_license.py    # License management
+│   ├── sunray_alert.py      # Security alerts
+│   └── sunray_compliance.py # Compliance reporting
+├── controllers/
+│   ├── __init__.py
+│   ├── advanced_api.py      # Enterprise API endpoints
+│   └── saml_controller.py   # SAML/OIDC integration
+├── views/
+│   ├── sunray_advanced_dashboard.xml
+│   ├── sunray_security_views.xml
+│   └── sunray_compliance_views.xml
+├── wizards/
+│   ├── __init__.py
+│   ├── bulk_import_wizard.py
+│   └── compliance_wizard.py
+├── security/
+│   ├── ir.model.access.csv
+│   └── enterprise_security.xml
+├── data/
+│   └── enterprise_data.xml
 └── static/
     └── description/
         └── icon.png
@@ -339,7 +373,7 @@ def _authenticate_api(self, request):
 ### Configuration Endpoint
 
 ```python
-@http.route('/api/v1/config', type='json', auth='none', methods=['GET'])
+@http.route('/sunray-srvr/v1/config', type='json', auth='none', methods=['GET'])
 def get_config(self, **kwargs):
     if not self._authenticate_api(request):
         return {'error': 'Unauthorized'}, 401
@@ -412,7 +446,7 @@ def get_config(self, **kwargs):
 ### Token Validation
 
 ```python
-@http.route('/api/v1/setup-tokens/validate', type='json', auth='none', methods=['POST'])
+@http.route('/sunray-srvr/v1/setup-tokens/validate', type='json', auth='none', methods=['POST'])
 def validate_token(self, username, token_hash, client_ip, **kwargs):
     if not self._authenticate_api(request):
         return {'error': 'Unauthorized'}, 401
@@ -472,7 +506,7 @@ def validate_token(self, username, token_hash, client_ip, **kwargs):
 ### Passkey Registration
 
 ```python
-@http.route('/api/v1/users/<string:username>/passkeys', type='json', auth='none', methods=['POST'])
+@http.route('/sunray-srvr/v1/users/<string:username>/passkeys', type='json', auth='none', methods=['POST'])
 def register_passkey(self, username, credential_id, public_key, name, client_ip, user_agent, **kwargs):
     if not self._authenticate_api(request):
         return {'error': 'Unauthorized'}, 401

@@ -112,20 +112,20 @@ The Worker intercepts all requests to the protected domain and determines the ap
 
 | Path | Method | Description |
 |------|--------|-------------|
-| `/sunray/v1/setup/validate` | POST | Validate setup token and store user |
-| `/sunray/v1/setup/register` | POST | Complete WebAuthn registration |
-| `/sunray/v1/auth/challenge` | POST | Get WebAuthn authentication challenge |
-| `/sunray/v1/auth/verify` | POST | Verify passkey assertion and create session |
-| `/sunray/v1/auth/logout` | POST | Clear session cookie |
+| `/sunray-wrkr/v1/setup/validate` | POST | Validate setup token and store user |
+| `/sunray-wrkr/v1/setup/register` | POST | Complete WebAuthn registration |
+| `/sunray-wrkr/v1/auth/challenge` | POST | Get WebAuthn authentication challenge |
+| `/sunray-wrkr/v1/auth/verify` | POST | Verify passkey assertion and create session |
+| `/sunray-wrkr/v1/auth/logout` | POST | Clear session cookie |
 
 ### Admin Endpoints
 
 | Path | Method | Description |
 |------|--------|-------------|
-| `/sunray/v1/admin/cache/invalidate` | POST | Force configuration cache refresh |
-| `/sunray/v1/admin/health` | GET | Health check and status endpoint |
+| `/sunray-wrkr/v1/admin/cache/invalidate` | POST | Force configuration cache refresh |
+| `/sunray-wrkr/v1/admin/health` | GET | Health check and status endpoint |
 
-**Note**: All Sunray internal endpoints use the `/sunray/v1/` prefix for API versioning and to avoid conflicts with backend application routes.
+**Note**: All Sunray Worker internal endpoints use the `/sunray-wrkr/v1/` prefix for API versioning and to avoid conflicts with backend application routes and Admin Server APIs.
 
 ## 🔧 Implementation Details
 
@@ -138,7 +138,7 @@ export default {
       const url = new URL(request.url);
       
       // Handle Sunray internal endpoints
-      if (url.pathname.startsWith('/sunray/v1/')) {
+      if (url.pathname.startsWith('/sunray-wrkr/v1/')) {
         return handleSunrayEndpoint(request, env, ctx);
       }
       
@@ -338,7 +338,7 @@ async function trackWebhookUsage(token, clientIP, env) {
    * Track webhook token usage via Admin Server
    */
   try {
-    await fetch(`${env.ADMIN_API_ENDPOINT}/api/v1/webhooks/track-usage`, {
+    await fetch(`${env.ADMIN_API_ENDPOINT}/sunray-srvr/v1/webhooks/track-usage`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${env.ADMIN_API_KEY}`,
@@ -375,7 +375,7 @@ async function checkUserExists(userIdentifier, env) {
   if (!userIdentifier) return false;
   
   try {
-    const response = await fetch(`${env.ADMIN_API_ENDPOINT}/api/v1/users/check`, {
+    const response = await fetch(`${env.ADMIN_API_ENDPOINT}/sunray-srvr/v1/users/check`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${env.ADMIN_API_KEY}`,
@@ -469,7 +469,7 @@ async function getConfig(forceRefresh = false) {
   }
   
   // Fetch from Admin Server
-  const response = await fetch(`${ADMIN_API_ENDPOINT}/api/v1/config`, {
+  const response = await fetch(`${ADMIN_API_ENDPOINT}/sunray-srvr/v1/config`, {
     headers: {
       'Authorization': `Bearer ${ADMIN_API_KEY}`,
       'X-Worker-ID': env.WORKER_ID
@@ -828,7 +828,7 @@ const SETUP_HTML = `<!DOCTYPE html>
       const token = document.getElementById('token').value;
       
       try {
-        const response = await fetch('/sunray/v1/setup/validate', {
+        const response = await fetch('/sunray-wrkr/v1/setup/validate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, token })
@@ -850,7 +850,7 @@ const SETUP_HTML = `<!DOCTYPE html>
     async function createPasskey() {
       try {
         // Get registration options
-        const optionsResponse = await fetch('/sunray/v1/setup/register', {
+        const optionsResponse = await fetch('/sunray-wrkr/v1/setup/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, step: 'options' })
@@ -873,7 +873,7 @@ const SETUP_HTML = `<!DOCTYPE html>
         });
         
         // Send credential to server
-        const registerResponse = await fetch('/sunray/v1/setup/register', {
+        const registerResponse = await fetch('/sunray-wrkr/v1/setup/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -927,7 +927,7 @@ const LOGIN_HTML = `<!DOCTYPE html>
     async function authenticate() {
       try {
         // Get challenge
-        const challengeResp = await fetch('/sunray/v1/auth/challenge', { method: 'POST' });
+        const challengeResp = await fetch('/sunray-wrkr/v1/auth/challenge', { method: 'POST' });
         const options = await challengeResp.json();
         
         // Convert base64 to ArrayBuffer
@@ -937,7 +937,7 @@ const LOGIN_HTML = `<!DOCTYPE html>
         const credential = await navigator.credentials.get({ publicKey: options });
         
         // Send to server
-        const verifyResp = await fetch('/sunray/v1/auth/verify', {
+        const verifyResp = await fetch('/sunray-wrkr/v1/auth/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
