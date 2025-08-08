@@ -15,4 +15,4 @@ echo "npm version     : $(npm -v)"
 #
 # Install Claude code
 #
-npm install -g @anthropic-ai/claude-code
+sudo npm install -g @anthropic-ai/claude-code
