@@ -4,6 +4,40 @@
 
 Sunray is a security-first authentication system that protects web applications using `WebAuthn Passkeys` while leveraging `Cloudflare's` global edge network for enterprise-grade security. The system consists of two main components: the `Cloudflare Worker` for request interception and the `Admin Server` (Odoo addon) for configuration management.
 
+## 📦 Editions
+
+Sunray is available in two technical editions:
+
+### **Sunray Core** (Free/Open Source)
+- Full passkey authentication system
+- CIDR bypass, public URLs, webhook tokens
+- Session management
+- User and host configuration
+- Basic monitoring dashboard
+- Community support
+
+### **Sunray Advanced** (Paid License)
+- All Core features plus:
+- TOTP (two-factor authentication)
+- Advanced session policies
+- Rate limiting
+- Security alerts and monitoring
+- Compliance reporting
+- Emergency access
+- SAML/OIDC integration
+- Premium support
+
+### **Sunray Enterprise** (Commercial Package)
+A complete solution combining:
+- Sunray Advanced license
+- Professional services (installation, configuration)
+- Training and onboarding
+- SLA with guaranteed response times
+- Custom integrations
+- Dedicated support team
+
+*Note: "Enterprise" is a commercial offering, not a separate technical product. The technical implementation consists of `sunray_core` and `sunray_advanced` addons.*
+
 ## 🔄 Authentication Flow
 
 When a `User` visits a protected website, the `Cloudflare Worker` intercepts the request and applies security-first access control. By default, everything is locked and requires `Passkey Authentication`, but administrators can configure three types of exceptions: `CIDR Bypass` for office networks, `Public URL Patterns` for unrestricted access to specific pages, and `Token URL Patterns` for API webhooks. If no exception applies, the `Worker` checks for a valid `Session Cookie` - if present, the request is proxied to the `Backend Service`; if not, the `Worker` queries the `Admin Server` to determine if the user exists and serves either a `Setup Page` (new users with `Setup Tokens`) or `Login Page` (existing users). After successful `Passkey` authentication, a `Session Cookie` is established and the original request is completed, with all authentication state managed through the `Admin Server's` configuration.

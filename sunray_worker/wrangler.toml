@@ -1,0 +1,31 @@
+name = "sunray-worker"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+[env.development]
+vars = { ENVIRONMENT = "development" }
+
+[env.production]
+vars = { ENVIRONMENT = "production" }
+
+# KV Namespaces for storing session data
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "YOUR_KV_NAMESPACE_ID"
+preview_id = "YOUR_PREVIEW_KV_NAMESPACE_ID"
+
+[[kv_namespaces]]
+binding = "CONFIG_CACHE"
+id = "YOUR_CONFIG_KV_NAMESPACE_ID"
+preview_id = "YOUR_CONFIG_PREVIEW_KV_NAMESPACE_ID"
+
+# Durable Objects (if needed for WebAuthn state)
+# [[durable_objects.bindings]]
+# name = "WEBAUTHN_STATE"
+# class_name = "WebAuthnState"
+
+# Environment variables (set these in Cloudflare dashboard)
+# [vars]
+# ADMIN_API_ENDPOINT = "https://your-odoo-server.com"
+# ADMIN_API_KEY = "your-api-key"
+# WORKER_ID = "worker-1"

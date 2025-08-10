@@ -8,7 +8,7 @@ The **Muppy Sunray Worker** is the `Cloudflare Worker` component that implements
 
 **Available in two editions:**
 - **Sunray (Free)**: Core authentication with manual `Setup Token` delivery
-- **Sunray Advanced (Paid)**: Enhanced with automation, advanced policies, and enterprise integrations
+- **Sunray Advanced (Paid)**: Enhanced features documented in [sunray_advanced_worker_spec.md](./sunray_advanced_worker_spec.md)
 
 ## 🏗️ Architecture
 
@@ -429,7 +429,7 @@ function getCookie(request, name) {
 // Required
 const ADMIN_API_ENDPOINT = env.ADMIN_API_ENDPOINT; // https://admin.muppy.cloud
 const ADMIN_API_KEY = env.ADMIN_API_KEY;           // Bearer token
-const SUNRAY_EDITION = env.SUNRAY_EDITION || 'free'; // 'free' or 'advanced'
+const SUNRAY_EDITION = env.SUNRAY_EDITION || 'core'; // 'core' or 'advanced'
 
 // Optional with defaults
 const SESSION_DURATION = env.SESSION_DURATION || 28800;     // 8 hours (fixed in free)
@@ -540,42 +540,22 @@ function getAuthenticationOptions() {
 ### Edition Feature Detection
 
 ```javascript
-// Feature availability based on edition
+// Core features (always available)
 const FEATURES = {
-  // Always available (Free + Advanced)
   passkey_auth: true,
-  basic_sessions: true,
+  session_management: true,
   audit_logging: true,
   user_management: true,
-  unlimited_servers: true,
-  admin_users: true,
-  basic_monitoring: true,
-  read_only_api: true,
-  
-  // Advanced edition only
-  advanced_sessions: isAdvanced(),
-  mfa_totp: isAdvanced(),
-  emergency_access: isAdvanced(),
-  rate_limiting: isAdvanced(),
-  security_alerts: isAdvanced(),
-  compliance_reports: isAdvanced(),
-  bulk_operations: isAdvanced(),
-  self_service_portal: isAdvanced(),
-  full_api_access: isAdvanced(),
-  saml_oidc: isAdvanced(),
-  hr_sync: isAdvanced(),
-  chat_integrations: isAdvanced(),
-  advanced_monitoring: isAdvanced()
+  webhook_auth: true,
+  cidr_bypass: true,
+  public_url_patterns: true,
+  token_url_patterns: true,
+  basic_monitoring: true
 };
 
+// Edition detection for advanced features
 function isAdvanced() {
   return SUNRAY_EDITION === 'advanced';
-}
-
-function requiresAdvanced(feature) {
-  if (!FEATURES[feature]) {
-    throw new Error(`Feature '${feature}' requires Sunray Advanced`);
-  }
 }
 ```
 
@@ -619,17 +599,40 @@ function validateSessionPolicy(request, sessionData, host) {
   return true;
 }
 
-async function createSession(username, credentialId, request, host) {
-  const sessionId = generateRandomId();
-  const duration = getSessionDuration(host, { username });
+// Secure session creation with JWT and fingerprinting
+async function createSecureSession(username, credentialId, request, host, env) {
+  const duration = getSessionDuration(host);
+  const sessionId = crypto.randomUUID();
   
+  // Generate device fingerprint
+  const fingerprint = await generateDeviceFingerprint(request);
+  
+  // Create JWT payload
+  const payload = {
+    sub: username,
+    jti: sessionId,
+    credentialId: credentialId,
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + duration,
+    iss: 'sunray-worker',
+    fingerprint: fingerprint
+  };
+  
+  // Sign JWT with secret
+  const jwt = await new jose.SignJWT(payload)
+    .setProtectedHeader({ alg: 'HS256' })
+    .sign(env.SESSION_SECRET);
+  
+  // Store session metadata in KV (not the JWT itself)
   const sessionData = {
     username,
     credentialId,
     createdAt: Date.now(),
     ip: request.headers.get('CF-Connecting-IP'),
     userAgent: request.headers.get('User-Agent'),
-    deviceTrusted: FEATURES.advanced_sessions ? await checkDeviceTrust(credentialId) : true
+    fingerprint: fingerprint,
+    country: request.cf.country,
+    asn: request.cf.asn
   };
   
   await env.SESSIONS.put(
@@ -638,11 +641,192 @@ async function createSession(username, credentialId, request, host) {
     { expirationTtl: duration }
   );
   
-  return sessionId;
+  // Generate CSRF token
+  const csrfToken = crypto.randomUUID();
+  
+  return {
+    jwt: jwt,
+    csrfToken: csrfToken,
+    sessionId: sessionId,
+    duration: duration
+  };
 }
 
-function getSessionCookie(sessionId, duration) {
-  return `sunray_session=${sessionId}; Domain=${RP_ID}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${duration}`;
+// Generate device fingerprint for session binding
+async function generateDeviceFingerprint(request) {
+  const components = [
+    request.headers.get('User-Agent') || '',
+    request.headers.get('Accept-Language') || '',
+    request.headers.get('Accept-Encoding') || '',
+    request.cf.country || '',
+    request.cf.timezone || ''
+  ];
+  
+  const encoder = new TextEncoder();
+  const data = encoder.encode(components.join('|'));
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Set secure session cookies
+function getSecureSessionCookies(session, domain) {
+  const cookies = [];
+  
+  // HttpOnly session cookie - not accessible to JavaScript
+  cookies.push(
+    `sunray_session=${session.jwt}; Domain=${domain}; Path=/; ` +
+    `Secure; HttpOnly; SameSite=Strict; Max-Age=${session.duration}`
+  );
+  
+  // CSRF token cookie - accessible to JavaScript for inclusion in headers
+  cookies.push(
+    `sunray_csrf=${session.csrfToken}; Domain=${domain}; Path=/; ` +
+    `Secure; SameSite=Strict; Max-Age=${session.duration}`
+  );
+  
+  return cookies;
+}
+
+// Validate secure session
+async function validateSecureSession(request, env) {
+  const sessionCookie = getCookie(request, 'sunray_session');
+  const csrfToken = getCookie(request, 'sunray_csrf');
+  const csrfHeader = request.headers.get('X-CSRF-Token');
+  
+  if (!sessionCookie) {
+    return null;
+  }
+  
+  // For state-changing requests, validate CSRF token
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(request.method)) {
+    if (!csrfToken || !csrfHeader || csrfToken !== csrfHeader) {
+      return { error: 'CSRF validation failed' };
+    }
+  }
+  
+  try {
+    // Verify JWT signature
+    const { payload } = await jose.jwtVerify(
+      sessionCookie,
+      env.SESSION_SECRET,
+      {
+        issuer: 'sunray-worker',
+        maxTokenAge: '24h'
+      }
+    );
+    
+    // Check if session exists in KV (allows for revocation)
+    const sessionData = await env.SESSIONS.get(`session:${payload.jti}`);
+    if (!sessionData) {
+      return { error: 'Session revoked' };
+    }
+    
+    const session = JSON.parse(sessionData);
+    
+    // Validate device fingerprint
+    const currentFingerprint = await generateDeviceFingerprint(request);
+    if (payload.fingerprint !== currentFingerprint) {
+      // Log potential session hijack
+      await logSecurityEvent(env, 'SESSION_FINGERPRINT_MISMATCH', {
+        sessionId: payload.jti,
+        username: payload.sub,
+        originalFingerprint: payload.fingerprint,
+        currentFingerprint: currentFingerprint
+      });
+      
+      // Configurable: strict mode would reject
+      if (env.SESSION_FINGERPRINT_MODE === 'strict') {
+        return { error: 'Device fingerprint mismatch' };
+      }
+    }
+    
+    // Optional: Validate IP hasn't changed drastically
+    const currentIP = request.headers.get('CF-Connecting-IP');
+    if (env.SESSION_IP_BINDING === 'strict' && session.ip !== currentIP) {
+      await logSecurityEvent(env, 'SESSION_IP_CHANGED', {
+        sessionId: payload.jti,
+        username: payload.sub,
+        originalIP: session.ip,
+        currentIP: currentIP
+      });
+      return { error: 'IP address changed' };
+    }
+    
+    // Check for anomalies (different country, ASN, etc.)
+    if (session.country !== request.cf.country) {
+      await logSecurityEvent(env, 'SESSION_COUNTRY_CHANGED', {
+        sessionId: payload.jti,
+        username: payload.sub,
+        originalCountry: session.country,
+        currentCountry: request.cf.country
+      });
+      
+      // Calculate distance for impossible travel detection
+      if (env.IMPOSSIBLE_TRAVEL_CHECK === 'true') {
+        const timeDiff = Date.now() - session.createdAt;
+        if (timeDiff < 3600000) { // Less than 1 hour
+          return { error: 'Impossible travel detected' };
+        }
+      }
+    }
+    
+    return {
+      username: payload.sub,
+      sessionId: payload.jti,
+      credentialId: payload.credentialId,
+      createdAt: session.createdAt
+    };
+    
+  } catch (error) {
+    // Invalid signature, expired, or malformed JWT
+    await logSecurityEvent(env, 'SESSION_VALIDATION_FAILED', {
+      error: error.message,
+      ip: request.headers.get('CF-Connecting-IP')
+    });
+    return null;
+  }
+}
+
+// Revoke session (for logout or security events)
+async function revokeSession(sessionId, env) {
+  await env.SESSIONS.delete(`session:${sessionId}`);
+  
+  // Add to revocation list with expiry
+  await env.SESSIONS.put(
+    `revoked:${sessionId}`,
+    'true',
+    { expirationTtl: 86400 } // Keep for 24 hours
+  );
+}
+
+// Log security events for monitoring
+async function logSecurityEvent(env, eventType, details) {
+  const event = {
+    type: eventType,
+    timestamp: new Date().toISOString(),
+    details: details
+  };
+  
+  // Store in KV for immediate access
+  const key = `security:${Date.now()}:${crypto.randomUUID()}`;
+  await env.SESSIONS.put(key, JSON.stringify(event), {
+    expirationTtl: 604800 // 7 days
+  });
+  
+  // Send to Admin Server for persistent storage
+  try {
+    await fetch(`${env.ADMIN_API_ENDPOINT}/sunray-srvr/v1/security-events`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.ADMIN_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(event)
+    });
+  } catch (error) {
+    console.error('Failed to log security event:', error);
+  }
 }
 ```
 
@@ -1145,22 +1329,18 @@ id = "your-challenges-namespace-id"
 binding = "CONFIG_CACHE"
 id = "your-config-namespace-id"
 
-# Advanced edition only
-[[kv_namespaces]]
-binding = "RATE_LIMIT"
-id = "your-rate-limit-namespace-id"
-
-[[kv_namespaces]]
-binding = "SECURITY_EVENTS"
-id = "your-security-events-namespace-id"
-
 [vars]
 RP_ID = "sunray.muppy.cloud"
 RP_NAME = "Muppy Sunray"
-SUNRAY_EDITION = "free"  # or "advanced"
-SESSION_DURATION = "28800"
+SUNRAY_EDITION = "core"  # or "advanced"
+SESSION_DURATION = "86400"  # 24 hours in seconds
 CACHE_DURATION = "300"
 CHALLENGE_TIMEOUT = "120"
+# Security settings
+SESSION_IP_BINDING = "soft"  # strict, soft, or none
+SESSION_FINGERPRINT_MODE = "soft"  # strict or soft
+IMPOSSIBLE_TRAVEL_CHECK = "true"
+CSRF_VALIDATION = "true"
 ```
 
 ### 3. Set Secrets
@@ -1168,9 +1348,7 @@ CHALLENGE_TIMEOUT = "120"
 ```bash
 wrangler secret put ADMIN_API_ENDPOINT
 wrangler secret put ADMIN_API_KEY
-
-# Advanced edition only
-wrangler secret put SUNRAY_LICENSE_KEY  # For advanced features validation
+wrangler secret put SESSION_SECRET  # Generate with: openssl rand -base64 32
 ```
 
 ### 4. Deploy
@@ -1181,18 +1359,27 @@ wrangler deploy
 
 ## 🔒 Security Considerations
 
+### Session Security Features
+
+1. **JWT-based Sessions**: Sessions are cryptographically signed using HMAC-SHA256
+2. **CSRF Protection**: Double-submit cookie pattern prevents cross-site request forgery
+3. **Device Fingerprinting**: Binds sessions to device characteristics
+4. **IP Binding**: Optional strict IP address validation
+5. **Session Revocation**: Ability to immediately invalidate compromised sessions
+6. **Impossible Travel Detection**: Detects geographically impossible session usage
+7. **Security Event Logging**: All anomalies are logged for analysis
+
 ### Headers Added to Proxied Requests
 
 **All Editions:**
 - `X-Sunray-User`: Authenticated username
 - `X-Sunray-Email`: User email address  
 - `X-Sunray-Authenticated`: Always "true"
-- `X-Sunray-Edition`: "free" or "advanced"
+- `X-Sunray-Edition`: "core" or "advanced"
 
 **Advanced Edition Only:**
 - `X-Sunray-Session-ID`: Unique session identifier
 - `X-Sunray-Device-Trusted`: Device trust level
-- `X-Sunray-MFA-Verified`: MFA completion status (if enabled)
 
 ### Security Headers on Responses
 
@@ -1233,7 +1420,6 @@ wrangler deploy
 - Rate limiting events and patterns
 - Security alerts and threat detection
 - Device trust level distribution
-- MFA completion rates
 - Emergency access usage
 - API usage patterns
 - Compliance audit events
@@ -1267,7 +1453,6 @@ wrangler deploy
   "edition": "advanced",
   "session_id": "sess_abc123",
   "device_trusted": true,
-  "mfa_verified": true,
   "risk_score": 0.1,
   "policy_applied": "standard"
 }
@@ -1308,7 +1493,6 @@ wrangler deploy
 - Session persistence
 - Cache behavior
 - Rate limiting (Advanced)
-- MFA flow (Advanced)
 
 ### End-to-End Tests
 - Browser automation with real passkeys

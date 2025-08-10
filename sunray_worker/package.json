@@ -1,0 +1,32 @@
+{
+  "name": "sunray-worker",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "jest",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "lint": "eslint src/"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Cloudflare Worker for Sunray authentication",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250807.0",
+    "@types/jest": "^30.0.0",
+    "eslint": "^9.32.0",
+    "jest": "^30.0.5",
+    "miniflare": "^4.20250803.0",
+    "typescript": "^5.9.2",
+    "wrangler": "^4.28.1"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "^13.1.2",
+    "itty-router": "^5.0.21",
+    "jose": "^6.0.12"
+  }
+}

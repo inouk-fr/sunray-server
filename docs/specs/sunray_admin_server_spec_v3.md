@@ -51,9 +51,9 @@ sunray_core/
         └── icon.png
 ```
 
-### **Advanced Edition: `sunray_enterprise`** 
+### **Advanced Edition: `sunray_advanced`** 
 ```
-sunray_enterprise/
+sunray_advanced/
 ├── __init__.py
 ├── __manifest__.py          # Depends: ['sunray_core']
 ├── models/
@@ -64,7 +64,7 @@ sunray_enterprise/
 │   └── sunray_compliance.py # Compliance reporting
 ├── controllers/
 │   ├── __init__.py
-│   ├── advanced_api.py      # Enterprise API endpoints
+│   ├── advanced_api.py      # Advanced API endpoints
 │   └── saml_controller.py   # SAML/OIDC integration
 ├── views/
 │   ├── sunray_advanced_dashboard.xml
@@ -76,9 +76,9 @@ sunray_enterprise/
 │   └── compliance_wizard.py
 ├── security/
 │   ├── ir.model.access.csv
-│   └── enterprise_security.xml
+│   └── advanced_security.xml
 ├── data/
-│   └── enterprise_data.xml
+│   └── advanced_data.xml
 └── static/
     └── description/
         └── icon.png
@@ -97,8 +97,8 @@ class SunrayUser(models.Model):
     username = fields.Char(string='Username', required=True, index=True)
     email = fields.Char(string='Email', required=True)
     display_name = fields.Char(string='Display Name')
-    active = fields.Boolean(default=True)
-    created_date = fields.Datetime(default=fields.Datetime.now)
+    is_active = fields.Boolean(string='Active', default=True,
+                              help='Deactivate to temporarily disable user access')
     
     # Relations
     passkey_ids = fields.One2many('sunray.passkey', 'user_id', string='Passkeys')
@@ -125,7 +125,6 @@ class SunrayPasskey(models.Model):
     credential_id = fields.Char(string='Credential ID', required=True, index=True)
     public_key = fields.Text(string='Public Key', required=True)
     name = fields.Char(string='Device Name', required=True)
-    created_date = fields.Datetime(default=fields.Datetime.now)
     last_used = fields.Datetime()
     backup_eligible = fields.Boolean(string='Backup Eligible')
     backup_state = fields.Boolean(string='Backup State')
@@ -160,16 +159,15 @@ class SunraySetupToken(models.Model):
     
     # Generation info
     generated_by = fields.Many2one('res.users')
-    generated_date = fields.Datetime(default=fields.Datetime.now)
     
     @api.model
     def cleanup_expired(self):
         """Cron job to clean expired tokens"""
-        expired = self.search([
+        expired_objs = self.search([
             ('expires_at', '<', fields.Datetime.now()),
             ('consumed', '=', False)
         ])
-        expired.unlink()
+        expired_objs.unlink()
 ```
 
 ### sunray.host
@@ -181,7 +179,8 @@ class SunrayHost(models.Model):
     
     domain = fields.Char(string='Domain', required=True, index=True)
     backend_url = fields.Char(string='Backend URL', required=True)
-    active = fields.Boolean(default=True)
+    is_active = fields.Boolean(string='Active', default=True,
+                              help='Deactivate to temporarily disable host protection')
     
     # Security Exceptions (whitelist approach)
     # Default: Everything requires passkey authentication
@@ -203,16 +202,16 @@ class SunrayHost(models.Model):
     
     # Webhook Authentication
     webhook_tokens = fields.One2many('sunray.webhook.token', 'host_id', string='Webhook Tokens')
-    webhook_header_name = fields.Char(string='Webhook Header Name', default='X-Webhook-Token')
-    webhook_param_name = fields.Char(string='Webhook URL Parameter', default='token')
+    webhook_header_name = fields.Char(string='Webhook Header Name', default='X-Sunray-Webhook-Token')
+    webhook_param_name = fields.Char(string='Webhook URL Parameter', default='sunray_token')
     
     # Access control  
     user_ids = fields.Many2many('sunray.user', string='Authorized Users')
     allowed_ips = fields.Text(string='Allowed IPs (JSON)', default='[]')
     
     # Session overrides
-    session_duration = fields.Integer(string='Session Duration (seconds)')
-    require_mfa = fields.Boolean(string='Require MFA', default=False)
+    session_duration_s = fields.Integer(string='Session Duration (seconds)',
+                                        help='Session timeout in seconds. Examples:\n - 1h = 3600\n- 4h = 14400\n - 8h = 28800\n - 24h = 86400')
     
     _sql_constraints = [
         ('domain_unique', 'UNIQUE(domain)', 'Domain must be unique!')
@@ -279,8 +278,8 @@ class SunrayWebhookToken(models.Model):
     host_id = fields.Many2one('sunray.host', required=True, ondelete='cascade')
     name = fields.Char(string='Token Name', required=True)
     token = fields.Char(string='Token Value', required=True, index=True)
-    active = fields.Boolean(default=True)
-    created_date = fields.Datetime(default=fields.Datetime.now)
+    is_active = fields.Boolean(string='Active', default=True,
+                              help='Deactivate to temporarily disable token')
     last_used = fields.Datetime()
     usage_count = fields.Integer(default=0)
     
@@ -323,6 +322,7 @@ class SunrayAuditLog(models.Model):
     _description = 'Audit Log'
     _order = 'timestamp desc'
     
+    # Using dedicated timestamp field instead of create_date for indexing and ordering performance
     timestamp = fields.Datetime(default=fields.Datetime.now, index=True)
     event_type = fields.Selection([
         ('auth.success', 'Authentication Success'),
@@ -345,8 +345,8 @@ class SunrayAuditLog(models.Model):
     def cleanup_old_logs(self):
         """Keep last 90 days of logs"""
         cutoff = fields.Datetime.now() - timedelta(days=90)
-        old_logs = self.search([('timestamp', '<', cutoff)])
-        old_logs.unlink()
+        old_log_objs = self.search([('timestamp', '<', cutoff)])
+        old_log_objs.unlink()
 ```
 
 ## 🔌 API Endpoints
@@ -408,34 +408,34 @@ def get_config(self, **kwargs):
             })
     
     # Add hosts
-    hosts = request.env['sunray.host'].sudo().search([('active', '=', True)])
-    for host in hosts:
+    host_objs = request.env['sunray.host'].sudo().search([('is_active', '=', True)])
+    for host_obj in host_objs:
         host_config = {
-            'domain': host.domain,
-            'backend': host.backend_url,
-            'authorized_users': host.user_ids.mapped('username'),
-            'allowed_ips': json.loads(host.allowed_ips or '[]'),
-            'session_duration_override': host.session_duration,
+            'domain': host_obj.domain,
+            'backend': host_obj.backend_url,
+            'authorized_users': host_obj.user_ids.mapped('username'),
+            'allowed_ips': json.loads(host_obj.allowed_ips or '[]'),
+            'session_duration_override': host_obj.session_duration_s,
             
             # Security exceptions (whitelist approach)
-            'allowed_cidrs': json.loads(host.allowed_cidrs or '[]'),
-            'public_url_patterns': json.loads(host.public_url_patterns or '[]'),
-            'token_url_patterns': json.loads(host.token_url_patterns or '[]'),
+            'allowed_cidrs': json.loads(host_obj.allowed_cidrs or '[]'),
+            'public_url_patterns': json.loads(host_obj.public_url_patterns or '[]'),
+            'token_url_patterns': json.loads(host_obj.token_url_patterns or '[]'),
             
             # Token authentication configuration
-            'webhook_header_name': host.webhook_header_name,
-            'webhook_param_name': host.webhook_param_name,
+            'webhook_header_name': host_obj.webhook_header_name,
+            'webhook_param_name': host_obj.webhook_param_name,
             'webhook_tokens': []
         }
         
         # Add active webhook tokens
-        for token in host.webhook_tokens.filtered('active'):
-            if token.is_valid():
+        for token_obj in host_obj.webhook_tokens.filtered('is_active'):
+            if token_obj.is_valid():
                 host_config['webhook_tokens'].append({
-                    'token': token.token,
-                    'name': token.name,
-                    'allowed_ips': json.loads(token.allowed_ips or '[]'),
-                    'expires_at': token.expires_at.isoformat() if token.expires_at else None
+                    'token': token_obj.token,
+                    'name': token_obj.name,
+                    'allowed_ips': json.loads(token_obj.allowed_ips or '[]'),
+                    'expires_at': token_obj.expires_at.isoformat() if token_obj.expires_at else None
                 })
         
         config['hosts'].append(host_config)
@@ -452,54 +452,54 @@ def validate_token(self, username, token_hash, client_ip, **kwargs):
         return {'error': 'Unauthorized'}, 401
     
     # Find user and token
-    user = request.env['sunray.user'].sudo().search([
+    user_obj = request.env['sunray.user'].sudo().search([
         ('username', '=', username),
-        ('active', '=', True)
+        ('is_active', '=', True)
     ])
     
-    if not user:
+    if not user_obj:
         return {'valid': False, 'error': 'User not found'}
     
     # Find matching token
-    token = request.env['sunray.setup.token'].sudo().search([
-        ('user_id', '=', user.id),
+    token_obj = request.env['sunray.setup.token'].sudo().search([
+        ('user_id', '=', user_obj.id),
         ('token_hash', '=', token_hash),
         ('consumed', '=', False),
         ('expires_at', '>', fields.Datetime.now())
     ])
     
-    if not token:
+    if not token_obj:
         return {'valid': False, 'error': 'Invalid or expired token'}
     
     # Check constraints
-    allowed_ips = json.loads(token.allowed_ips or '[]')
+    allowed_ips = json.loads(token_obj.allowed_ips or '[]')
     if allowed_ips and not self._check_ip_allowed(client_ip, allowed_ips):
         return {'valid': False, 'error': 'IP not allowed'}
     
     # Check usage limit
-    if token.current_uses >= token.max_uses:
+    if token_obj.current_uses >= token_obj.max_uses:
         return {'valid': False, 'error': 'Token usage limit exceeded'}
     
     # Mark as consumed
-    token.write({
-        'current_uses': token.current_uses + 1,
-        'consumed': token.current_uses + 1 >= token.max_uses,
+    token_obj.write({
+        'current_uses': token_obj.current_uses + 1,
+        'consumed': token_obj.current_uses + 1 >= token_obj.max_uses,
         'consumed_date': fields.Datetime.now()
     })
     
     # Log event
     request.env['sunray.audit.log'].sudo().create({
         'event_type': 'token.consumed',
-        'user_id': user.id,
+        'user_id': user_obj.id,
         'username': username,
         'ip_address': client_ip,
-        'details': json.dumps({'token_id': token.id})
+        'details': json.dumps({'token_id': token_obj.id})
     })
     
     return {'valid': True, 'user': {
-        'username': user.username,
-        'email': user.email,
-        'display_name': user.display_name
+        'username': user_obj.username,
+        'email': user_obj.email,
+        'display_name': user_obj.display_name
     }}
 ```
 
@@ -579,6 +579,43 @@ def register_passkey(self, username, credential_id, public_key, name, client_ip,
 ### User Management View
 
 ```xml
+<!-- List View with filters -->
+<record id="view_sunray_user_tree" model="ir.ui.view">
+    <field name="name">sunray.user.tree</field>
+    <field name="model">sunray.user</field>
+    <field name="arch" type="xml">
+        <tree>
+            <field name="username"/>
+            <field name="email"/>
+            <field name="display_name"/>
+            <field name="is_active" widget="boolean_toggle"/>
+            <field name="passkey_count"/>
+            <field name="last_login"/>
+        </tree>
+    </field>
+</record>
+
+<!-- Search View with filters -->
+<record id="view_sunray_user_search" model="ir.ui.view">
+    <field name="name">sunray.user.search</field>
+    <field name="model">sunray.user</field>
+    <field name="arch" type="xml">
+        <search>
+            <field name="username"/>
+            <field name="email"/>
+            <separator/>
+            <filter name="active" string="Active" domain="[('is_active', '=', True)]" default="1"/>
+            <filter name="inactive" string="Inactive" domain="[('is_active', '=', False)]"/>
+            <separator/>
+            <filter name="has_passkeys" string="Has Passkeys" domain="[('passkey_count', '>', 0)]"/>
+            <group expand="0" string="Group By">
+                <filter string="Status" name="group_by_status" context="{'group_by': 'is_active'}"/>
+            </group>
+        </search>
+    </field>
+</record>
+
+<!-- Form View -->
 <record id="view_sunray_user_form" model="ir.ui.view">
     <field name="name">sunray.user.form</field>
     <field name="model">sunray.user</field>
@@ -598,8 +635,8 @@ def register_passkey(self, username, credential_id, public_key, name, client_ip,
                         <field name="display_name"/>
                     </group>
                     <group>
-                        <field name="active"/>
-                        <field name="created_date" readonly="1"/>
+                        <field name="is_active" widget="boolean_toggle"/>
+                        <field name="create_date" readonly="1"/>
                         <field name="last_login" readonly="1"/>
                         <field name="passkey_count" readonly="1"/>
                     </group>
@@ -610,7 +647,7 @@ def register_passkey(self, username, credential_id, public_key, name, client_ip,
                         <field name="passkey_ids">
                             <tree editable="bottom">
                                 <field name="name"/>
-                                <field name="created_date"/>
+                                <field name="create_date"/>
                                 <field name="last_used"/>
                                 <field name="backup_state"/>
                                 <button name="revoke" string="Revoke" type="object" icon="fa-trash"/>
@@ -662,7 +699,7 @@ class SetupTokenWizard(models.TransientModel):
             ip_list = [ip.strip() for ip in self.allowed_ips.splitlines() if ip.strip()]
         
         # Create token record
-        setup_token = self.env['sunray.setup.token'].create({
+        setup_token_obj = self.env['sunray.setup.token'].create({
             'user_id': self.user_id.id,
             'token_hash': f'sha512:{token_hash}',
             'device_name': self.device_name,
@@ -763,7 +800,6 @@ admin = env['res.users'].create({
 - All free edition metrics plus:
 - Security alerts count (last 7 days)
 - Risk score distribution
-- MFA adoption rate
 - Device trust level breakdown
 - Geographic access patterns
 - Compliance score
@@ -855,7 +891,7 @@ admin = env['res.users'].create({
 
 ## 📋 Feature Comparison
 
-| Feature | Sunray (Free) | Sunray Advanced |
+| Feature | Sunray Core | Sunray Advanced |
 |---------|---------------|------------------|
 | **User Management** |
 | Users & Devices | ✅ | ✅ |
