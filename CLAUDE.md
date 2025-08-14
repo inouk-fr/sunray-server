@@ -8,9 +8,10 @@ Muppy Sunray is a lightweight, secure, self-hosted solution for authorizing HTTP
 
 ### Main Components
 
-1. **Cloudflare Worker**: Edge authentication using WebAuthn/Passkeys
+1. **Sunray Worker aka Sunray Cloudflare Worker**: Cloudflare Route Workers in charge of edge authentication using WebAuthn/Passkeys
 2. **Sunray Server (Odoo 18 Addon)**: Admin interface and configuration management
-3. **Demo Application**: Protected web application for testing
+3. **Sunray CLI (part of Sunray Server)**: An odoo CLI to manage Sunray server's compnents
+4. **Protected Hosts**: Web sites/app to protect
 
 ## Environment Configuration
 
@@ -137,8 +138,34 @@ wrangler dev
 # Deploy to Cloudflare
 wrangler deploy
 
-# Run tests
-npm test
+# Run tests with Vitest
+npm test                      # Run all tests
+npm run test:watch           # Run tests in watch mode
+npm run test:coverage        # Run tests with coverage report
+```
+
+#### Testing Framework
+
+The Cloudflare Worker uses **Vitest** as its testing framework. Vitest is chosen for:
+- First-class support for ES modules and modern JavaScript/TypeScript
+- Fast execution and hot module replacement (HMR) in watch mode
+- Built-in mocking capabilities for Cloudflare Worker APIs
+- Compatible with Wrangler's testing utilities
+- Zero-config TypeScript support
+
+Example test structure:
+```javascript
+// src/example.test.js
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { handleRequest } from './handler';
+
+describe('Worker Handler', () => {
+  it('should return 200 for valid requests', async () => {
+    const request = new Request('https://example.com');
+    const response = await handleRequest(request);
+    expect(response.status).toBe(200);
+  });
+});
 ```
 
 ### Sunray CLI (srctl)
@@ -231,6 +258,16 @@ sunray_core/
   def get_user(self, username):
       user_obj = self.env['sunray.user'].search([('username', '=', username)])
       return user_obj or False
+  ```
+
+- **List Views**: When creating list views, make all fields `optional="show"` so users can easily adapt the displayed columns
+  ```xml
+  <list>
+      <field name="name"/>
+      <field name="description" optional="show"/>
+      <field name="create_date" optional="show"/>
+      <field name="is_active" widget="boolean_toggle"/>
+  </list>
   ```
 
 - **Audit Fields**: Never create `created_by`, `created_date`, `modified_by`, or `modified_date` fields

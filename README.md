@@ -216,6 +216,19 @@ npm run test:e2e
 - Report issues at GitHub Issues
 - See `.claude.local.md` for environment-specific configuration (not in repo)
 
+## 🚧 TODOs
+
+### KV Namespace Creation Documentation
+The following Cloudflare KV namespaces need to be created for the Worker:
+- `SESSIONS` - Store user session data
+- `CHALLENGES` - Store WebAuthn challenges
+- `CONFIG_CACHE` - Cache configuration from server
+- `CONTROL_SIGNALS` - Cache invalidation signals
+
+Use `./sunray_worker/deploy.sh` option 3 to create all namespaces automatically.
+
+**Note**: KV cache refresh delays are defined by Cloudflare (60s all Tiers)
+
 ## 📄 License
 
 MIT - Designed to be forked, adapted, and improved.
