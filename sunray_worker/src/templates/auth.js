@@ -38,11 +38,23 @@ export function getAuthHTML(rpName, returnTo = '/') {
         .logo {
             text-align: center;
             margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .brand-name {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: 3px;
+            color: #667eea;
+            text-shadow: 1px 1px 2px rgba(102, 126, 234, 0.3);
         }
         
         .logo svg {
-            width: 60px;
-            height: 60px;
+            width: 45px;
+            height: 45px;
         }
         
         h1 {
@@ -158,16 +170,17 @@ export function getAuthHTML(rpName, returnTo = '/') {
 <body>
     <div class="container">
         <div class="logo">
+            <span class="brand-name">SUNRAY</span>
             <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
                 <circle cx="30" cy="30" r="28" fill="#667eea" opacity="0.1"/>
                 <path d="M30 10 L30 20 M30 40 L30 50 M10 30 L20 30 M40 30 L50 30" 
                       stroke="#667eea" stroke-width="3" stroke-linecap="round"/>
-                <circle cx="30" cy="30" r="8" fill="#764ba2"/>
+                <circle cx="30" cy="30" r="8" fill="#e0681eff"/>
             </svg>
         </div>
         
         <h1>Sign In</h1>
-        <p class="subtitle">Use your passkey to authenticate</p>
+        <p class="subtitle">Use your passkey to access this server</p>
         
         <div class="error" id="error"></div>
         <div class="info" id="info"></div>
@@ -176,14 +189,14 @@ export function getAuthHTML(rpName, returnTo = '/') {
         <form id="authForm">
             <div class="form-group">
                 <label for="username">Username</label>
-                <input type="text" id="username" name="username" required autocomplete="username webauthn">
+                <input type="text" id="username" name="username" required autocomplete="Username webauthn">
             </div>
             
             <button type="submit" id="submitBtn">Sign In with Passkey</button>
         </form>
         
         <div class="setup-link">
-            <a href="/sunray-wrkr/v1/setup">Need to register? Set up your account</a>
+            <a href="/sunray-wrkr/v1/setup">First time ? Grap your 'Setup Token' and click here.</a>
         </div>
     </div>
     
