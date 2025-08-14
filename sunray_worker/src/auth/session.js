@@ -151,6 +151,24 @@ export async function validateSession(sessionCookie, env) {
       }
     }
     
+    // Check for user-specific invalidation signal (from version changes)
+    const invalidateSignal = await env.SESSIONS.get(`invalidate:user:${sessionData.username}`);
+    if (invalidateSignal) {
+      const invalidateTime = parseInt(invalidateSignal);
+      console.log(`[validateSession] User ${sessionData.username} has invalidation signal at ${invalidateTime}`);
+      
+      // If session was created before the invalidation signal, invalidate it
+      if (sessionData.created_at < invalidateTime) {
+        console.log(`[validateSession] ✗ Session invalidated due to user version change`);
+        await env.SESSIONS.delete(sessionKey);
+        // Clean up the invalidation signal if it's old enough
+        if (Date.now() - invalidateTime > 300000) { // 5 minutes
+          await env.SESSIONS.delete(`invalidate:user:${sessionData.username}`);
+        }
+        return null;
+      }
+    }
+    
     console.log(`[validateSession] ✓ Session is valid and active`);
     return sessionData;
     

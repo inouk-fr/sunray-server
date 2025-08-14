@@ -15,7 +15,19 @@ export async function getConfig(env, forceRefresh = false) {
       const maxAge = parseInt(env.CACHE_TTL || '300') * 1000; // Convert to ms
       
       if (cacheAge < maxAge) {
-        return cached.data;
+        // Cache is still within TTL, but check if we need to verify versions
+        // This happens periodically to detect version changes
+        if (shouldCheckVersions(cached)) {
+          const versionChanged = await checkConfigVersions(cached, env);
+          if (versionChanged) {
+            console.log('Config version changed, forcing refresh');
+            forceRefresh = true;
+          } else {
+            return cached.data;
+          }
+        } else {
+          return cached.data;
+        }
       }
     }
   }
@@ -46,9 +58,15 @@ export async function getConfig(env, forceRefresh = false) {
     
     const config = await response.json();
     
-    // Cache the configuration
+    // Cache the configuration with version information
     const cacheData = {
       timestamp: Date.now(),
+      lastVersionCheck: Date.now(),
+      versions: {
+        config: config.config_version,
+        hosts: config.host_versions || {},
+        users: config.user_versions || {}
+      },
       data: config
     };
     
@@ -57,6 +75,9 @@ export async function getConfig(env, forceRefresh = false) {
     await env.CONFIG_CACHE.put(cacheKey, JSON.stringify(cacheData), {
       expirationTtl: ttl
     });
+    
+    // Check if we need to clear specific caches based on version changes
+    await handleVersionChanges(cacheData, env);
     
     return config;
     
@@ -140,4 +161,123 @@ export async function checkUserExists(username, env) {
     console.error('Error checking user:', error);
     return false;
   }
+}
+
+/**
+ * Check if we should verify versions (periodically, not on every request)
+ */
+function shouldCheckVersions(cached) {
+  // Check versions every 60 seconds to detect changes faster than TTL
+  const versionCheckInterval = 60000; // 60 seconds
+  const lastCheck = cached.lastVersionCheck || cached.timestamp;
+  return (Date.now() - lastCheck) > versionCheckInterval;
+}
+
+/**
+ * Check if config versions have changed
+ */
+async function checkConfigVersions(cached, env) {
+  try {
+    // Lightweight version check endpoint (could be a HEAD request in future)
+    const response = await fetch(`${env.ADMIN_API_ENDPOINT}/sunray-srvr/v1/config`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${env.ADMIN_API_KEY}`,
+        'X-Worker-ID': env.WORKER_ID,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      return false; // Don't invalidate on error
+    }
+    
+    const newConfig = await response.json();
+    
+    // Compare versions
+    const oldVersion = cached.versions?.config;
+    const newVersion = newConfig.config_version;
+    
+    if (oldVersion !== newVersion) {
+      console.log(`Config version changed: ${oldVersion} -> ${newVersion}`);
+      return true;
+    }
+    
+    // Update last version check time
+    cached.lastVersionCheck = Date.now();
+    const cacheKey = `config:${env.WORKER_ID}`;
+    await env.CONFIG_CACHE.put(cacheKey, JSON.stringify(cached), {
+      expirationTtl: parseInt(env.CACHE_TTL || '300')
+    });
+    
+    return false;
+  } catch (error) {
+    console.error('Error checking config versions:', error);
+    return false;
+  }
+}
+
+/**
+ * Handle version changes by clearing relevant caches
+ */
+async function handleVersionChanges(newCache, env) {
+  const cacheKey = `config:${env.WORKER_ID}`;
+  
+  // Get previous cache to compare versions
+  const oldCache = await env.CONFIG_CACHE.get(`${cacheKey}_prev`, { type: 'json' });
+  
+  if (!oldCache || !oldCache.versions) {
+    // First time or no previous versions, save current as previous
+    await env.CONFIG_CACHE.put(`${cacheKey}_prev`, JSON.stringify(newCache), {
+      expirationTtl: parseInt(env.CACHE_TTL || '300') * 2
+    });
+    return;
+  }
+  
+  // Compare host versions
+  const oldHostVersions = oldCache.versions.hosts || {};
+  const newHostVersions = newCache.versions.hosts || {};
+  
+  for (const [host, newVersion] of Object.entries(newHostVersions)) {
+    const oldVersion = oldHostVersions[host];
+    if (oldVersion && oldVersion !== newVersion) {
+      console.log(`Host ${host} version changed: ${oldVersion} -> ${newVersion}`);
+      // Clear host-specific cache if needed
+      await clearHostCache(host, env);
+    }
+  }
+  
+  // Compare user versions (these are only recently modified users)
+  const newUserVersions = newCache.versions.users || {};
+  
+  for (const [username, version] of Object.entries(newUserVersions)) {
+    console.log(`User ${username} was recently modified (version: ${version})`);
+    // Clear user sessions for recently modified users
+    await clearUserSessions(username, env);
+  }
+  
+  // Save current as previous for next comparison
+  await env.CONFIG_CACHE.put(`${cacheKey}_prev`, JSON.stringify(newCache), {
+    expirationTtl: parseInt(env.CACHE_TTL || '300') * 2
+  });
+}
+
+/**
+ * Clear cache for a specific host
+ */
+async function clearHostCache(host, env) {
+  // Implementation depends on how host-specific data is cached
+  console.log(`Clearing cache for host: ${host}`);
+  // For now, just log - actual implementation would clear host-specific entries
+}
+
+/**
+ * Clear sessions for a specific user
+ */
+async function clearUserSessions(username, env) {
+  console.log(`Clearing sessions for user: ${username}`);
+  // Mark user for session revalidation
+  await env.SESSIONS.put(`invalidate:user:${username}`, Date.now().toString(), {
+    expirationTtl: 300 // 5 minutes
+  });
 }

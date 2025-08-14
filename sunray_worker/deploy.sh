@@ -21,16 +21,19 @@ create_kv_namespaces() {
     SESSIONS_ID=$(wrangler kv namespace create SESSIONS 2>&1 | grep -oP 'id = "\K[^"]+')
     CHALLENGES_ID=$(wrangler kv namespace create CHALLENGES 2>&1 | grep -oP 'id = "\K[^"]+')
     CONFIG_CACHE_ID=$(wrangler kv namespace create CONFIG_CACHE 2>&1 | grep -oP 'id = "\K[^"]+')
+    CONTROL_SIGNALS_ID=$(wrangler kv namespace create CONTROL_SIGNALS 2>&1 | grep -oP 'id = "\K[^"]+')
     
     # Create preview namespaces
     SESSIONS_PREVIEW_ID=$(wrangler kv namespace create SESSIONS --preview 2>&1 | grep -oP 'id = "\K[^"]+')
     CHALLENGES_PREVIEW_ID=$(wrangler kv namespace create CHALLENGES --preview 2>&1 | grep -oP 'id = "\K[^"]+')
     CONFIG_CACHE_PREVIEW_ID=$(wrangler kv namespace create CONFIG_CACHE --preview 2>&1 | grep -oP 'id = "\K[^"]+' )
+    CONTROL_SIGNALS_PREVIEW_ID=$(wrangler kv namespace create CONTROL_SIGNALS --preview 2>&1 | grep -oP 'id = "\K[^"]+' )
     
     echo "✅ KV namespaces created:"
     echo "   SESSIONS: $SESSIONS_ID (preview: $SESSIONS_PREVIEW_ID)"
     echo "   CHALLENGES: $CHALLENGES_ID (preview: $CHALLENGES_PREVIEW_ID)"
     echo "   CONFIG_CACHE: $CONFIG_CACHE_ID (preview: $CONFIG_CACHE_PREVIEW_ID)"
+    echo "   CONTROL_SIGNALS: $CONTROL_SIGNALS_ID (preview: $CONTROL_SIGNALS_PREVIEW_ID)"
     
     # Update wrangler.toml with the IDs
     sed -i.bak "s/id = \"sunray_sessions\"/id = \"$SESSIONS_ID\"/" wrangler.toml
@@ -39,6 +42,8 @@ create_kv_namespaces() {
     sed -i.bak "s/preview_id = \"sunray_challenges_preview\"/preview_id = \"$CHALLENGES_PREVIEW_ID\"/" wrangler.toml
     sed -i.bak "s/id = \"sunray_config_cache\"/id = \"$CONFIG_CACHE_ID\"/" wrangler.toml
     sed -i.bak "s/preview_id = \"sunray_config_cache_preview\"/preview_id = \"$CONFIG_CACHE_PREVIEW_ID\"/" wrangler.toml
+    sed -i.bak "s/id = \"sunray_control_signals\"/id = \"$CONTROL_SIGNALS_ID\"/" wrangler.toml
+    sed -i.bak "s/preview_id = \"sunray_control_signals_preview\"/preview_id = \"$CONTROL_SIGNALS_PREVIEW_ID\"/" wrangler.toml
 }
 
 # Function to set secrets

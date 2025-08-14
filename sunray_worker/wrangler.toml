@@ -20,6 +20,11 @@ binding = "CHALLENGES"
 id = "952656e635fb49ee8bb01add3602e5ed"
 preview_id = "85570b37da5d4e63a99ec07f2d173f7a"
 
+[[kv_namespaces]]
+binding = "CONTROL_SIGNALS"
+id = "77dce3eabc1d4daa8ba73bdc3c263a36"
+preview_id = "a12b6c925fb043f6a2e1184c6a4c6e75"
+
 # Environment variables (will be set via wrangler secret)
 [vars]
 ADMIN_API_ENDPOINT = "https://sunray-server-dev-cyril.pack8s.com"
