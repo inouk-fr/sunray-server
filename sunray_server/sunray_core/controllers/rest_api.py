@@ -9,6 +9,38 @@ from datetime import datetime, timedelta
 class SunrayRESTController(http.Controller):
     """REST API endpoints for Cloudflare Worker communication"""
     
+    def _setup_request_context(self, req):
+        """Setup request context for audit logging
+        
+        Extracts and stores request correlation data in Odoo context
+        """
+        # Get or create request ID
+        audit_model = request.env['sunray.audit.log'].sudo()
+        request_id = audit_model._get_or_create_request_id(req)
+        
+        # Detect event source
+        event_source = audit_model._detect_source_from_request(req)
+        
+        # Extract worker ID
+        worker_id = req.httprequest.headers.get('X-Worker-ID')
+        
+        # Update context with correlation data
+        context_updates = {
+            'sunray_request_id': request_id,
+            'sunray_event_source': event_source,
+        }
+        
+        if worker_id:
+            context_updates['sunray_worker_id'] = worker_id
+            
+        request.env.context = dict(request.env.context, **context_updates)
+        
+        return {
+            'request_id': request_id,
+            'event_source': event_source,
+            'worker_id': worker_id
+        }
+    
     def _authenticate_api(self, req):
         """Authenticate API request using Bearer token"""
         auth_header = req.httprequest.headers.get('Authorization', '')
@@ -188,6 +220,10 @@ class SunrayRESTController(http.Controller):
                 'public_url_patterns': host_obj.get_public_url_patterns(),
                 'token_url_patterns': host_obj.get_token_url_patterns(),
                 
+                # WAF integration
+                'bypass_waf_for_authenticated': host_obj.bypass_waf_for_authenticated,
+                'waf_bypass_revalidation_minutes': host_obj.waf_bypass_revalidation_minutes or 15,
+                
                 # Token authentication
                 'webhook_header_name': host_obj.webhook_header_name,
                 'webhook_param_name': host_obj.webhook_param_name,
@@ -206,12 +242,14 @@ class SunrayRESTController(http.Controller):
             
             config['hosts'].append(host_config)
         
-        # Log config fetch
-        request.env['sunray.audit.log'].sudo().create({
-            'event_type': 'config.fetched',
-            'ip_address': request.httprequest.environ.get('REMOTE_ADDR'),
-            'details': json.dumps({'worker_id': request.httprequest.headers.get('X-Worker-ID')})
-        })
+        # Setup request context and log config fetch
+        context_data = self._setup_request_context(request)
+        request.env['sunray.audit.log'].sudo().create_worker_event(
+            event_type='config.fetched',
+            details={'worker_id': context_data['worker_id']},
+            sunray_worker=context_data['worker_id'],
+            ip_address=request.httprequest.environ.get('REMOTE_ADDR')
+        )
         
         return self._json_response(config)
     
@@ -301,14 +339,16 @@ class SunrayRESTController(http.Controller):
             'consumed_date': fields.Datetime.now()
         })
         
-        # Log event
-        request.env['sunray.audit.log'].sudo().create({
-            'event_type': 'token.consumed',
-            'user_id': user_obj.id,
-            'username': username,
-            'ip_address': client_ip,
-            'details': json.dumps({'token_id': token_obj.id})
-        })
+        # Setup request context and log event
+        context_data = self._setup_request_context(request)
+        request.env['sunray.audit.log'].sudo().create_user_event(
+            event_type='token.consumed',
+            details={'token_id': token_obj.id},
+            sunray_user_id=user_obj.id,
+            sunray_worker=context_data['worker_id'],
+            ip_address=client_ip,
+            username=username  # Keep for compatibility
+        )
         
         return self._json_response({
             'valid': True,
@@ -344,15 +384,17 @@ class SunrayRESTController(http.Controller):
             'backup_state': data.get('backup_state', False)
         })
         
-        # Log event
-        request.env['sunray.audit.log'].sudo().create({
-            'event_type': 'passkey.registered',
-            'user_id': user_obj.id,
-            'username': username,
-            'ip_address': data.get('client_ip'),
-            'user_agent': data.get('user_agent'),
-            'details': json.dumps({'passkey_id': passkey_obj.id, 'name': data.get('name')})
-        })
+        # Setup request context and log event
+        context_data = self._setup_request_context(request)
+        request.env['sunray.audit.log'].sudo().create_user_event(
+            event_type='passkey.registered',
+            details={'passkey_id': passkey_obj.id, 'name': data.get('name')},
+            sunray_user_id=user_obj.id,
+            sunray_worker=context_data['worker_id'],
+            ip_address=data.get('client_ip'),
+            user_agent=data.get('user_agent'),
+            username=username  # Keep for compatibility
+        )
         
         return self._json_response({'success': True, 'passkey_id': passkey_obj.id})
     
@@ -407,14 +449,16 @@ class SunrayRESTController(http.Controller):
         # Update last used timestamp
         passkey_obj.last_used = fields.Datetime.now()
         
-        # Log successful authentication
-        request.env['sunray.audit.log'].sudo().create({
-            'event_type': 'auth.success',
-            'user_id': user_obj.id,
-            'username': username,
-            'ip_address': data.get('client_ip'),
-            'details': json.dumps({'credential_id': credential_id})
-        })
+        # Setup request context and log successful authentication
+        context_data = self._setup_request_context(request)
+        request.env['sunray.audit.log'].sudo().create_user_event(
+            event_type='auth.success',
+            details={'credential_id': credential_id},
+            sunray_user_id=user_obj.id,
+            sunray_worker=context_data['worker_id'],
+            ip_address=data.get('client_ip'),
+            username=username  # Keep for compatibility
+        )
         
         return self._json_response({
             'success': True,
@@ -465,14 +509,16 @@ class SunrayRESTController(http.Controller):
             'expires_at': expires_at
         })
         
-        # Log event
-        request.env['sunray.audit.log'].sudo().create({
-            'event_type': 'session.created',
-            'user_id': user_obj.id,
-            'username': data.get('username'),
-            'ip_address': data.get('created_ip'),
-            'details': json.dumps({'session_id': data.get('session_id')})
-        })
+        # Setup request context and log event
+        context_data = self._setup_request_context(request)
+        request.env['sunray.audit.log'].sudo().create_user_event(
+            event_type='session.created',
+            details={'session_id': data.get('session_id')},
+            sunray_user_id=user_obj.id,
+            sunray_worker=context_data['worker_id'],
+            ip_address=data.get('created_ip'),
+            username=data.get('username')  # Keep for compatibility
+        )
         
         return self._json_response({'success': True, 'session_id': session_obj.session_id})
     
@@ -509,17 +555,79 @@ class SunrayRESTController(http.Controller):
         # Get JSON data
         data = json.loads(request.httprequest.data)
         
-        # Create audit log entry
-        request.env['sunray.audit.log'].sudo().create({
-            'event_type': data.get('type'),
-            'timestamp': fields.Datetime.now(),
-            'details': json.dumps(data.get('details', {})),
-            'ip_address': data.get('details', {}).get('ip'),
-            'user_agent': data.get('details', {}).get('user_agent'),
-            'severity': data.get('severity', 'warning')
-        })
+        # Setup request context and create audit log entry
+        context_data = self._setup_request_context(request)
+        request.env['sunray.audit.log'].sudo().create_security_event(
+            event_type=data.get('type'),
+            details=data.get('details', {}),
+            severity=data.get('severity', 'warning'),
+            sunray_worker=context_data['worker_id'],
+            ip_address=data.get('details', {}).get('ip'),
+            user_agent=data.get('details', {}).get('user_agent')
+        )
         
         return self._json_response({'success': True})
+    
+    @http.route('/sunray-srvr/v1/audit/sublimation-manipulation', type='http', auth='none', methods=['POST'], cors='*', csrf=False)
+    def report_sublimation_manipulation(self, **kwargs):
+        """Report sublimation cookie manipulation attempts"""
+        if not self._authenticate_api(request):
+            return self._error_response('Unauthorized', 401)
+        
+        # Get JSON data
+        data = json.loads(request.httprequest.data)
+        
+        # Setup request context for audit logging
+        context_data = self._setup_request_context(request)
+        
+        # Create detailed audit log entry
+        event_details = {
+            'reason': data.get('reason'),
+            'client_ip': data.get('client_ip'),
+            'details': data.get('details', {}),
+            'worker_id': request.httprequest.headers.get('X-Worker-ID'),
+            'timestamp': data.get('timestamp')
+        }
+        
+        # Map reason to event type
+        event_type_map = {
+            'invalid_format': 'waf_bypass.tamper.format',
+            'hmac_mismatch': 'waf_bypass.tamper.hmac',
+            'session_mismatch': 'waf_bypass.tamper.session',
+            'ip_mismatch': 'waf_bypass.tamper.ip_change',
+            'ua_mismatch': 'waf_bypass.tamper.ua_change',
+            'expired': 'waf_bypass.expired',
+            'validation_error': 'waf_bypass.error'
+        }
+        
+        event_type = event_type_map.get(data.get('reason'), 'waf_bypass.unknown')
+        
+        # Find user
+        username = data.get('username')
+        user_obj = request.env['sunray.user'].sudo().search([('username', '=', username)], limit=1)
+        
+        # Determine severity based on event type
+        critical_events = ['hmac_mismatch', 'session_mismatch', 'invalid_format']
+        severity = 'critical' if data.get('reason') in critical_events else 'warning'
+        
+        # Log the manipulation attempt
+        request.env['sunray.audit.log'].sudo().create_security_event(
+            event_type=event_type,
+            event_details=event_details,
+            event_source='worker',
+            sunray_user_id=user_obj.id if user_obj else False,
+            username=username if not user_obj else None,
+            sunray_worker=context_data['worker_id'],
+            severity=severity,
+            ip_address=data.get('client_ip')
+        )
+        
+        # Additional actions for critical events
+        if data.get('reason') in ['hmac_mismatch', 'session_mismatch']:
+            # Potential attack - log warning for monitoring
+            _logger.warning(f"Potential sublimation cookie attack from {data.get('client_ip')} for user {username} - reason: {data.get('reason')}")
+        
+        return self._json_response({'status': 'logged'})
     
     @http.route('/sunray-srvr/v1/webhooks/track-usage', type='http', auth='none', methods=['POST'], cors='*', csrf=False)
     def track_webhook_usage(self, **kwargs):

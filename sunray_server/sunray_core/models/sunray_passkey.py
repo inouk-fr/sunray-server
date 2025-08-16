@@ -62,12 +62,15 @@ class SunrayPasskey(models.Model):
         self.ensure_one()
         
         # Log the revocation
-        self.env['sunray.audit.log'].create({
-            'event_type': 'passkey.revoked',
-            'user_id': self.user_id.id,
-            'username': self.user_id.username,
-            'details': f'{{"passkey_name": "{self.name}", "credential_id": "{self.credential_id}"}}'
-        })
+        self.env['sunray.audit.log'].create_user_event(
+            event_type='passkey.revoked',
+            details={
+                'passkey_name': self.name,
+                'credential_id': self.credential_id
+            },
+            sunray_user_id=self.user_id.id,
+            username=self.user_id.username  # Keep for compatibility
+        )
         
         # Delete the passkey
         self.unlink()

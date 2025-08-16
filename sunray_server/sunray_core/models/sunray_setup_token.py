@@ -75,13 +75,14 @@ class SunraySetupToken(models.Model):
         
         # Log cleanup
         if expired_objs:
-            self.env['sunray.audit.log'].create({
-                'event_type': 'token.cleanup',
-                'details': json.dumps({
+            self.env['sunray.audit.log'].create_security_event(
+                event_type='token.cleanup',
+                details={
                     'count': len(expired_objs),
                     'tokens': expired_objs.mapped('id')
-                })
-            })
+                },
+                event_source='system'
+            )
         
         expired_objs.unlink()
         return True
@@ -183,16 +184,17 @@ class SunraySetupToken(models.Model):
         })
         
         # Log event
-        self.env['sunray.audit.log'].create({
-            'event_type': 'token.generated',
-            'user_id': user_id,
-            'username': user_obj.username,
-            'details': json.dumps({
+        self.env['sunray.audit.log'].create_admin_event(
+            event_type='token.generated',
+            details={
                 'device_name': device_name,
                 'host': host_obj.domain,
                 'validity_hours': validity_hours,
-                'max_uses': max_uses
-            })
-        })
+                'max_uses': max_uses,
+                'target_user': user_obj.username
+            },
+            sunray_user_id=user_id,  # Also track the target user
+            username=user_obj.username  # Keep for compatibility
+        )
         
         return token_obj, token_value

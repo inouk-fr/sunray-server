@@ -238,7 +238,22 @@ sunray_core/
     └── test_sunray.py       # Unit tests
 ```
 
+### Development Guidelines
+
+- **Feature-First Approach**: When you need to manipulate Sunray server data and no feature exists for that purpose, you MUST propose to develop a proper feature (GUI or CLI) instead of writing SQL or creating ad-hoc Odoo/Python scripts. Only if the user rejects the feature development option can you propose ad-hoc scripts/commands.
+
 ### Coding Conventions
+
+- **Odoo 18 View Syntax**: Use new attribute syntax instead of `attrs`
+  ```xml
+  <!-- DON'T DO THIS (Odoo 17 and earlier): -->
+  <field name="field_name" attrs="{'invisible': [('other_field', '=', False)]}"/>
+  
+  <!-- DO THIS (Odoo 18+): -->
+  <field name="field_name" invisible="not other_field"/>
+  <field name="field_name" readonly="state == 'done'"/>
+  <field name="field_name" required="is_required"/>
+  ```
 
 - **Odoo Recordsets**: Suffix with `_obj` or `_objs`
   ```python
@@ -419,6 +434,82 @@ def test_webhook(self, mock_post):
 2. **Daily Incremental**: Backup audit logs and session data
 3. **Weekly Full**: Complete database dump
 4. **Configuration Backup**: Version control for `buildit.json[c]` and module code
+
+## TODO: WAF Bypass Documentation
+
+### Feature: Authenticated User WAF Bypass
+**Status:** Implementation in progress
+
+#### Overview
+Allows authenticated users to bypass Cloudflare WAF rules using a security-hardened cookie mechanism with comprehensive audit logging.
+
+#### Performance Overhead
+- **Cookie Generation:** ~5ms on authentication (one-time)
+- **Cookie Validation:** <2ms per request (negligible)
+- **Cookie Size:** ~200 bytes additional
+- **Overall Impact:** <0.1% latency increase for authenticated users
+
+#### Security Features
+- IP address binding (prevents cookie theft)
+- User-Agent fingerprinting (detects browser changes)
+- Time-based revalidation (15-minute default)
+- HMAC signature (prevents tampering)
+- Hidden cookie name `sunray_sublimation` (reduces discoverability)
+- **Comprehensive audit logging of all manipulation attempts**
+
+#### Audit Events Tracked
+- `waf_bypass.created` - Sublimation cookie created
+- `waf_bypass.validated` - Successful validation
+- `waf_bypass.expired` - Cookie expired naturally
+- `waf_bypass.cleared` - Cookie cleared on logout
+- `waf_bypass.tamper.format` - Invalid cookie format
+- `waf_bypass.tamper.hmac` - HMAC verification failed (forgery attempt)
+- `waf_bypass.tamper.session` - Session ID mismatch
+- `waf_bypass.tamper.ip_change` - IP address changed
+- `waf_bypass.tamper.ua_change` - User-Agent changed
+- `waf_bypass.error` - Validation error
+
+#### Monitoring Sublimation Manipulation
+```bash
+# View all WAF bypass events
+bin/sunray-srvr srctl auditlog get --sublimation-only
+
+# View manipulation attempts only
+bin/sunray-srvr srctl auditlog get --event-type "waf_bypass.tamper.*"
+
+# Monitor in real-time
+bin/sunray-srvr srctl auditlog get --since 1m --sublimation-only --follow
+```
+
+#### Configuration Required
+1. Enable `bypass_waf_for_authenticated` on desired hosts in Sunray Server UI
+2. Configure Cloudflare firewall rule:
+   ```
+   Name: Sunray Authenticated Bypass
+   Expression: (http.cookie contains "sunray_sublimation")
+   Action: Skip → All remaining custom rules
+   Priority: Very High (before OWASP rules)
+   ```
+3. Set environment variable: `WAF_BYPASS_SECRET` (or uses SESSION_SECRET)
+
+#### Testing Checklist
+- [ ] Cookie creation on authentication
+- [ ] IP change detection and audit logging
+- [ ] User-Agent change detection and audit logging
+- [ ] Time-based expiry and audit logging
+- [ ] HMAC validation and forgery attempt logging
+- [ ] WAF rule bypass verification
+- [ ] Audit log entries for all manipulation types
+- [ ] Performance benchmarks
+
+#### Rollback Procedure
+1. Disable `bypass_waf_for_authenticated` on affected hosts
+2. Remove Cloudflare firewall rule
+3. Review audit logs for any exploitation attempts:
+   ```bash
+   bin/sunray-srvr srctl auditlog get --event-type "waf_bypass.tamper.*" --since 24h
+   ```
+4. No data migration required (graceful degradation)
 
 ## Important Notes
 

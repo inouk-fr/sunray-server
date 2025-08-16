@@ -103,13 +103,14 @@ class SunraySession(models.Model):
         
         # Log cleanup
         if expired_objs:
-            self.env['sunray.audit.log'].create({
-                'event_type': 'session.expired',
-                'details': json.dumps({
+            self.env['sunray.audit.log'].create_security_event(
+                event_type='session.expired',
+                details={
                     'count': len(expired_objs),
                     'sessions': expired_objs.mapped('session_id')
-                })
-            })
+                },
+                event_source='system'
+            )
         
         return True
     
@@ -123,15 +124,15 @@ class SunraySession(models.Model):
         })
         
         # Log revocation
-        self.env['sunray.audit.log'].create({
-            'event_type': 'session.revoked',
-            'user_id': self.user_id.id,
-            'username': self.user_id.username,
-            'details': json.dumps({
+        self.env['sunray.audit.log'].create_user_event(
+            event_type='session.revoked',
+            details={
                 'session_id': self.session_id,
                 'reason': reason
-            })
-        })
+            },
+            sunray_user_id=self.user_id.id,
+            username=self.user_id.username  # Keep for compatibility
+        )
         
         return True
     

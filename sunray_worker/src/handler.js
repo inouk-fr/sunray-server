@@ -5,7 +5,7 @@
 
 import { checkCIDRBypass } from './utils/cidr.js';
 import { checkPublicURL, checkTokenURL } from './utils/patterns.js';
-import { validateSession } from './auth/session.js';
+import { validateSession, validateWAFBypassCookie, createSublimationClearCookie } from './auth/session.js';
 import { getConfig } from './config.js';
 import { createLogger } from './utils/logger.js';
 
@@ -93,6 +93,45 @@ export async function handleRequest(request, env, ctx) {
       
       if (sessionHostMatches) {
         logger.info(`[Session Check] ✓ Session auth granted for user ${session.username} on host ${hostConfig.domain}`);
+        
+        // Check WAF bypass cookie if enabled for this host
+        if (hostConfig.bypass_waf_for_authenticated) {
+          const sublimationCookie = getCookie(request, 'sunray_sublimation', logger);
+          
+          if (sublimationCookie) {
+            const clientIP = request.headers.get('CF-Connecting-IP') || '127.0.0.1';
+            const userAgent = request.headers.get('User-Agent') || '';
+            const maxAge = (hostConfig.waf_bypass_revalidation_minutes || 15) * 60;
+            
+            const isWAFBypassValid = await validateWAFBypassCookie(
+              sublimationCookie,
+              session.session_id,
+              clientIP,
+              userAgent,
+              maxAge,
+              env,
+              session.username
+            );
+            
+            if (!isWAFBypassValid) {
+              // Sublimation cookie invalid, clear it and force re-authentication
+              logger.warn(`[WAF Bypass] Invalid sublimation cookie for user ${session.username} from IP ${clientIP} - forcing re-auth`);
+              
+              const response = Response.redirect(loginUrl.toString(), 302);
+              response.headers.set('Set-Cookie', createSublimationClearCookie(hostConfig.domain));
+              return response;
+            } else {
+              logger.debug(`[WAF Bypass] Sublimation cookie validated for user ${session.username}`);
+            }
+          } else {
+            // Session exists but no sublimation cookie - could be old session from before feature was enabled
+            // Check if session was created recently (last 30 seconds) - if so, it might need a refresh
+            const sessionAge = Date.now() - (session.created_at || 0);
+            if (sessionAge < 30000) {
+              logger.debug(`[WAF Bypass] Recent session without sublimation cookie for ${session.username} (feature may be newly enabled)`);
+            }
+          }
+        }
         
         // Add user info headers for backend
         const headers = new Headers(request.headers);

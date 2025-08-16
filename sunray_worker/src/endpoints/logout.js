@@ -2,7 +2,7 @@
  * Logout endpoint - handles session termination
  */
 
-import { revokeSession, createLogoutCookie } from '../auth/session.js';
+import { revokeSession, createLogoutCookie, createSublimationClearCookie } from '../auth/session.js';
 
 export async function handleLogout(request, env, ctx) {
   const url = new URL(request.url);
@@ -31,13 +31,16 @@ export async function handleLogout(request, env, ctx) {
     }
   }
   
-  // Clear session cookie
-  const cookie = createLogoutCookie(env.RP_ID);
+  // Clear both session and sublimation cookies
+  const sessionClearCookie = createLogoutCookie(env.RP_ID);
+  const sublimationClearCookie = createSublimationClearCookie(env.RP_ID);
   
-  // Redirect to return URL or home
+  console.log(`[Logout] Clearing session and sublimation cookies for domain ${env.RP_ID}`);
+  
+  // Redirect to return URL or home with both cookies cleared
   return Response.redirect(returnTo, 302, {
     headers: {
-      'Set-Cookie': cookie
+      'Set-Cookie': [sessionClearCookie, sublimationClearCookie]
     }
   });
 }

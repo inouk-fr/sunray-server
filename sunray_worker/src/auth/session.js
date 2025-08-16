@@ -264,3 +264,208 @@ export function createLogoutCookie(domain) {
     'SameSite=Lax'
   ].filter(Boolean).join('; ');
 }
+
+/**
+ * Create WAF bypass cookie (sublimation cookie)
+ */
+export async function createWAFBypassCookie(sessionId, clientIP, userAgent, env) {
+  const logger = createLogger(env);
+  const secret = env.WAF_BYPASS_SECRET || env.SESSION_SECRET || 'default-secret-change-me';
+  const timestamp = Math.floor(Date.now() / 1000);
+  
+  try {
+    // Create hashes (first 8 chars for brevity)
+    const sessionHash = await hashPrefix(sessionId, 8);
+    const ipHash = await hashPrefix(clientIP, 8);
+    const uaHash = await hashPrefix(userAgent, 8);
+    
+    // Create HMAC
+    const data = `${sessionHash}:${ipHash}:${uaHash}:${timestamp}`;
+    const hmac = await createHMAC(data, secret);
+    
+    // Combine and encode
+    const cookieValue = btoa(`${data}:${hmac}`);
+    
+    logger.info(`[WAF Bypass] Created sublimation cookie for session ${sessionId} from IP ${clientIP}`);
+    
+    return cookieValue;
+  } catch (error) {
+    logger.error(`[WAF Bypass] Error creating cookie: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Validate WAF bypass cookie with detailed audit logging
+ */
+export async function validateWAFBypassCookie(cookieValue, sessionId, clientIP, userAgent, maxAge, env, username) {
+  const logger = createLogger(env);
+  
+  try {
+    const decoded = atob(cookieValue);
+    const parts = decoded.split(':');
+    
+    if (parts.length !== 5) {
+      logger.warn(`[WAF Bypass] Invalid cookie format for user ${username} from IP ${clientIP}`);
+      await reportSublimationManipulation(env, username, clientIP, 'invalid_format', { parts_count: parts.length });
+      return false;
+    }
+    
+    const [sessionHash, ipHash, uaHash, timestamp, hmac] = parts;
+    
+    // Verify HMAC
+    const data = `${sessionHash}:${ipHash}:${uaHash}:${timestamp}`;
+    const expectedHMAC = await createHMAC(data, env.WAF_BYPASS_SECRET || env.SESSION_SECRET || 'default-secret-change-me');
+    if (hmac !== expectedHMAC) {
+      logger.error(`[WAF Bypass] HMAC verification failed for user ${username} from IP ${clientIP}`);
+      await reportSublimationManipulation(env, username, clientIP, 'hmac_mismatch', { 
+        provided_hmac: hmac.substring(0, 8) + '...',
+        timestamp: timestamp 
+      });
+      return false;
+    }
+    
+    // Verify session binding
+    const expectedSessionHash = await hashPrefix(sessionId, 8);
+    if (sessionHash !== expectedSessionHash) {
+      logger.warn(`[WAF Bypass] Session mismatch for user ${username} from IP ${clientIP}`);
+      await reportSublimationManipulation(env, username, clientIP, 'session_mismatch', { 
+        cookie_session: sessionHash,
+        actual_session: expectedSessionHash 
+      });
+      return false;
+    }
+    
+    // Verify IP binding
+    const expectedIPHash = await hashPrefix(clientIP, 8);
+    if (ipHash !== expectedIPHash) {
+      logger.warn(`[WAF Bypass] IP mismatch for user ${username} - cookie IP hash: ${ipHash}, current IP: ${clientIP}`);
+      await reportSublimationManipulation(env, username, clientIP, 'ip_mismatch', { 
+        cookie_ip_hash: ipHash,
+        current_ip: clientIP 
+      });
+      return false;
+    }
+    
+    // Verify User-Agent
+    const expectedUAHash = await hashPrefix(userAgent, 8);
+    if (uaHash !== expectedUAHash) {
+      logger.warn(`[WAF Bypass] User-Agent mismatch for user ${username} from IP ${clientIP}`);
+      await reportSublimationManipulation(env, username, clientIP, 'ua_mismatch', { 
+        cookie_ua_hash: uaHash,
+        current_ua_hash: expectedUAHash 
+      });
+      return false;
+    }
+    
+    // Verify timestamp not too old
+    const age = Math.floor(Date.now() / 1000) - parseInt(timestamp);
+    if (age > maxAge) {
+      logger.info(`[WAF Bypass] Cookie expired for user ${username} from IP ${clientIP} (age: ${age}s, max: ${maxAge}s)`);
+      await reportSublimationManipulation(env, username, clientIP, 'expired', { 
+        age_seconds: age,
+        max_age: maxAge 
+      });
+      return false;
+    }
+    
+    // All validations passed
+    logger.debug(`[WAF Bypass] Cookie validated successfully for user ${username} from IP ${clientIP}`);
+    return true;
+    
+  } catch (error) {
+    logger.error(`[WAF Bypass] Validation error for user ${username}: ${error.message}`);
+    await reportSublimationManipulation(env, username, clientIP, 'validation_error', { 
+      error: error.message 
+    });
+    return false;
+  }
+}
+
+/**
+ * Create sublimation cookie string
+ */
+export function createSublimationCookie(value, expiresAt, domain) {
+  const expires = new Date(expiresAt).toUTCString();
+  const secure = domain !== 'localhost';
+  
+  return [
+    `sunray_sublimation=${value}`,
+    `Domain=${domain}`,
+    `Path=/`,
+    `Expires=${expires}`,
+    secure ? 'Secure' : '',
+    'SameSite=Lax'
+  ].filter(Boolean).join('; ');
+}
+
+/**
+ * Create sublimation clear cookie
+ */
+export function createSublimationClearCookie(domain) {
+  const secure = domain !== 'localhost';
+  
+  return [
+    'sunray_sublimation=',
+    `Domain=${domain}`,
+    'Path=/',
+    'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+    secure ? 'Secure' : '',
+    'SameSite=Lax'
+  ].filter(Boolean).join('; ');
+}
+
+/**
+ * Helper function to create hash prefix
+ */
+async function hashPrefix(data, length) {
+  const encoder = new TextEncoder();
+  const dataBuffer = encoder.encode(data);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
+  const hashArray = new Uint8Array(hashBuffer);
+  const hashHex = Array.from(hashArray).map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashHex.substring(0, length);
+}
+
+/**
+ * Helper function to create HMAC
+ */
+async function createHMAC(data, secret) {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(data));
+  const signatureArray = new Uint8Array(signature);
+  return Array.from(signatureArray).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Report sublimation cookie manipulation to admin server
+ */
+async function reportSublimationManipulation(env, username, clientIP, reason, details) {
+  try {
+    await fetch(`${env.ADMIN_API_ENDPOINT}/sunray-srvr/v1/audit/sublimation-manipulation`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.ADMIN_API_KEY}`,
+        'X-Worker-ID': env.WORKER_ID,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        username,
+        client_ip: clientIP,
+        reason,
+        details,
+        timestamp: new Date().toISOString()
+      })
+    });
+  } catch (error) {
+    console.error('Failed to report sublimation manipulation:', error);
+  }
+}

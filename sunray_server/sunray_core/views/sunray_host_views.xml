@@ -68,8 +68,16 @@
                         </page>
                         
                         <page string="Configuration">
-                            <group>
+                            <group string="Session Settings">
                                 <field name="session_duration_s"/>
+                            </group>
+                            
+                            <group string="WAF Integration">
+                                <field name="bypass_waf_for_authenticated"/>
+                                <field name="waf_bypass_revalidation_minutes" invisible="not bypass_waf_for_authenticated"/>
+                            </group>
+                            
+                            <group string="Webhook Settings">
                                 <field name="webhook_header_name"/>
                                 <field name="webhook_param_name"/>
                             </group>

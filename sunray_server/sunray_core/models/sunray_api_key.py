@@ -68,10 +68,10 @@ class SunrayApiKey(models.Model):
         new_key = self.generate_key()
         
         # Log key regeneration
-        self.env['sunray.audit.log'].create({
-            'event_type': 'api_key.regenerated',
-            'details': f'{{"key_name": "{self.name}"}}'
-        })
+        self.env['sunray.audit.log'].create_admin_event(
+            event_type='api_key.regenerated',
+            details={'key_name': self.name}
+        )
         
         self.key = new_key
         return new_key

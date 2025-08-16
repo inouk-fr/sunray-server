@@ -4,8 +4,8 @@
 
 import { getAuthHTML } from '../templates/auth.js';
 import { verifyPasskey } from '../auth/webauthn.js';
-import { createSession, createSessionCookie } from '../auth/session.js';
-import { checkUserExists } from '../config.js';
+import { createSession, createSessionCookie, createWAFBypassCookie, createSublimationCookie } from '../auth/session.js';
+import { checkUserExists, getConfig } from '../config.js';
 
 export async function handleAuth(request, env, ctx) {
   const url = new URL(request.url);
@@ -157,17 +157,52 @@ export async function handleAuth(request, env, ctx) {
     const session = await createSession(user, hostDomain, env);
     
     // Create session cookie
-    const cookie = createSessionCookie(
+    const sessionCookie = createSessionCookie(
       session.jwt,
       session.expiresAt,
       env.RP_ID
     );
     
+    // Check if WAF bypass is enabled for this host
+    const config = await getConfig(env);
+    const hostConfig = config?.hosts.find(h => h.domain === hostDomain);
+    const cookies = [sessionCookie];
+    
+    if (hostConfig?.bypass_waf_for_authenticated) {
+      try {
+        // Get client info for WAF bypass cookie
+        const clientIP = request.headers.get('CF-Connecting-IP') || '127.0.0.1';
+        const userAgent = request.headers.get('User-Agent') || '';
+        
+        // Create WAF bypass cookie
+        const wafBypassValue = await createWAFBypassCookie(
+          session.sessionId,
+          clientIP,
+          userAgent,
+          env
+        );
+        
+        // Add sublimation cookie (NOT HttpOnly so WAF can read it)
+        const sublimationCookie = createSublimationCookie(
+          wafBypassValue,
+          session.expiresAt,
+          env.RP_ID
+        );
+        
+        cookies.push(sublimationCookie);
+        
+        console.log(`[WAF Bypass] Created sublimation cookie for ${user.username} on ${hostDomain}`);
+      } catch (error) {
+        console.error(`[WAF Bypass] Failed to create sublimation cookie: ${error.message}`);
+        // Continue without WAF bypass cookie - session will still work
+      }
+    }
+    
     // Store session info temporarily for cookie setting
     await env.SESSIONS.put(
       `pending:${session.sessionId}`,
       JSON.stringify({
-        cookie,
+        cookies,
         redirectTo: returnTo || '/'
       }),
       { expirationTtl: 60 } // 1 minute TTL
@@ -210,23 +245,47 @@ export async function handleAuth(request, env, ctx) {
     
     console.log(`[auth/complete] Found pending session:`, {
       redirectTo: pending.redirectTo,
-      cookieLength: pending.cookie ? pending.cookie.length : 0,
-      cookiePreview: pending.cookie ? pending.cookie.substring(0, 100) + '...' : 'none'
+      cookieCount: pending.cookies ? pending.cookies.length : (pending.cookie ? 1 : 0),
+      // Show both old single cookie format and new multiple cookies format for compatibility
+      cookiePreview: pending.cookies ? `[${pending.cookies.length} cookies]` : 
+                     (pending.cookie ? pending.cookie.substring(0, 100) + '...' : 'none')
     });
     
     // Clean up pending session
     await env.SESSIONS.delete(pendingKey);
     console.log(`[auth/complete] Cleaned up pending session`);
     
-    // Redirect with cookie
-    console.log(`[auth/complete] ✓ Redirecting to ${pending.redirectTo} with session cookie`);
+    // Prepare response headers
+    const headers = {
+      'Location': pending.redirectTo
+    };
+    
+    // Set cookies - handle both new format (multiple cookies) and old format (single cookie) for compatibility
+    if (pending.cookies && Array.isArray(pending.cookies)) {
+      // New format: multiple cookies
+      pending.cookies.forEach((cookie, index) => {
+        if (index === 0) {
+          headers['Set-Cookie'] = cookie;
+        } else {
+          // For multiple Set-Cookie headers, we need to use an array or multiple header entries
+          // Cloudflare Workers handles this by allowing array values
+          if (Array.isArray(headers['Set-Cookie'])) {
+            headers['Set-Cookie'].push(cookie);
+          } else {
+            headers['Set-Cookie'] = [headers['Set-Cookie'], cookie];
+          }
+        }
+      });
+      console.log(`[auth/complete] ✓ Redirecting to ${pending.redirectTo} with ${pending.cookies.length} cookies`);
+    } else if (pending.cookie) {
+      // Legacy format: single cookie (for backward compatibility)
+      headers['Set-Cookie'] = pending.cookie;
+      console.log(`[auth/complete] ✓ Redirecting to ${pending.redirectTo} with single session cookie`);
+    }
     
     return new Response(null, {
       status: 302,
-      headers: {
-        'Location': pending.redirectTo,
-        'Set-Cookie': pending.cookie
-      }
+      headers
     });
   }
   

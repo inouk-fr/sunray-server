@@ -148,13 +148,14 @@ class SunrayUser(models.Model):
                 )
                 
                 # Log the action
-                self.env['sunray.audit.log'].create({
-                    'event_type': 'cache_invalidation',
-                    'severity': 'info',
-                    'user_id': record.id,
-                    'username': record.username,
-                    'details': f'Cache refresh triggered for user {record.username}'
-                })
+                self.env['sunray.audit.log'].create_admin_event(
+                    event_type='cache_invalidation',
+                    severity='info',
+                    details=f'Cache refresh triggered for user {record.username}',
+                    sunray_user_id=record.id,
+                    username=record.username,
+                    admin_user_id=self.env.user.id
+                )
             except Exception as e:
                 _logger.error(f"Failed to trigger cache refresh for user {record.username}: {str(e)}")
                 raise UserError(f"Failed to trigger cache refresh: {str(e)}")

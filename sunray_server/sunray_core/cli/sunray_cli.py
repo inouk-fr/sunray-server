@@ -38,10 +38,14 @@ class SunrayCommand(Command):
         apikey_list = apikey_sub.add_parser('list', help='List API keys')
         apikey_list.add_argument('--sr-all', action='store_true', 
                                 help='Show inactive keys')
+        apikey_list.add_argument('--output', '-o', choices=['table', 'json', 'yaml'],
+                                default='table', help='Output format (default: table)')
         
         # apikey get
         apikey_get = apikey_sub.add_parser('get', help='Get API key details')
         apikey_get.add_argument('name', help='API key name or ID')
+        apikey_get.add_argument('--output', '-o', choices=['table', 'json', 'yaml'],
+                               default='table', help='Output format (default: table)')
         
         # apikey create
         apikey_create = apikey_sub.add_parser('create', help='Create API key')
@@ -62,10 +66,14 @@ class SunrayCommand(Command):
         # user list
         user_list = user_sub.add_parser('list', help='List users')
         user_list.add_argument('--sr-host', help='Filter by host')
+        user_list.add_argument('--output', '-o', choices=['table', 'json', 'yaml'],
+                              default='table', help='Output format (default: table)')
         
         # user get
         user_get = user_sub.add_parser('get', help='Get user details')
         user_get.add_argument('username', help='Username')
+        user_get.add_argument('--output', '-o', choices=['table', 'json', 'yaml'],
+                             default='table', help='Output format (default: table)')
         
         # user create-token
         user_token = user_sub.add_parser('create-token', help='Create setup token')
@@ -86,16 +94,35 @@ class SunrayCommand(Command):
         session_list.add_argument('--sr-all', action='store_true', 
                                  help='Show all sessions (including expired)')
         session_list.add_argument('--sr-user', help='Filter by username')
+        session_list.add_argument('--output', '-o', choices=['table', 'json', 'yaml'],
+                                 default='table', help='Output format (default: table)')
         
-        # session revoke
-        session_revoke = session_sub.add_parser('revoke', help='Revoke session')
-        session_revoke.add_argument('session_id', help='Session ID')
+        # session get
+        session_get = session_sub.add_parser('get', help='Get session details')
+        session_get.add_argument('session_id', help='Session ID')
+        session_get.add_argument('--output', '-o', choices=['table', 'json', 'yaml'],
+                                default='table', help='Output format (default: table)')
         
-        # session delete
+        # session delete 
         session_delete = session_sub.add_parser('delete', help='Delete session')
         session_delete.add_argument('session_id', help='Session ID')
         session_delete.add_argument('--sr-hard', action='store_true',
                                    help='Permanently delete (default: soft delete)')
+        
+        # session revoke
+        session_revoke = session_sub.add_parser('revoke', help='Revoke session with audit trail')
+        session_revoke.add_argument('session_id', help='Session ID')
+        session_revoke.add_argument('--reason', help='Revocation reason for audit trail')
+        
+        # session cleanup
+        session_cleanup = session_sub.add_parser('cleanup', help='Remove expired sessions')
+        session_cleanup.add_argument('--dry-run', action='store_true',
+                                    help='Show what would be removed without doing it')
+        
+        # session stats
+        session_stats = session_sub.add_parser('stats', help='Show session statistics')
+        session_stats.add_argument('--output', '-o', choices=['table', 'json', 'yaml'],
+                                  default='table', help='Output format (default: table)')
         
         # Host commands
         host = subparsers.add_parser('host', help='Manage hosts')
@@ -103,10 +130,14 @@ class SunrayCommand(Command):
         
         # host list
         host_list = host_sub.add_parser('list', help='List hosts')
+        host_list.add_argument('--output', '-o', choices=['table', 'json', 'yaml'],
+                              default='table', help='Output format (default: table)')
         
         # host get
         host_get = host_sub.add_parser('get', help='Get host details')
         host_get.add_argument('name', help='Host name or domain')
+        host_get.add_argument('--output', '-o', choices=['table', 'json', 'yaml'],
+                             default='table', help='Output format (default: table)')
         
         # host create
         host_create = host_sub.add_parser('create', help='Create host')
@@ -122,6 +153,25 @@ class SunrayCommand(Command):
         host_delete.add_argument('--sr-force', action='store_true',
                                 help='Force delete even if users exist')
         
+        # Cron commands
+        cron = subparsers.add_parser('cron', help='Manage cron jobs')
+        cron_sub = cron.add_subparsers(dest='action', help='Action')
+        
+        # cron list
+        cron_list = cron_sub.add_parser('list', help='List cron jobs')
+        cron_list.add_argument('--output', '-o', choices=['table', 'json', 'yaml'],
+                              default='table', help='Output format (default: table)')
+        
+        # cron get
+        cron_get = cron_sub.add_parser('get', help='Get cron job details')
+        cron_get.add_argument('cron_id', type=int, help='Cron job ID')
+        cron_get.add_argument('--output', '-o', choices=['table', 'json', 'yaml'],
+                             default='table', help='Output format (default: table)')
+        
+        # cron trigger
+        cron_trigger = cron_sub.add_parser('trigger', help='Trigger cron job via Odoo Run Now')
+        cron_trigger.add_argument('cron_id', type=int, help='Cron job ID')
+        
         # Setup Token commands
         setuptoken = subparsers.add_parser('setuptoken', help='Manage setup tokens')
         setuptoken_sub = setuptoken.add_subparsers(dest='action', help='Action')
@@ -131,10 +181,14 @@ class SunrayCommand(Command):
         setuptoken_list.add_argument('--sr-all', action='store_true',
                                     help='Show all tokens including consumed/expired')
         setuptoken_list.add_argument('--sr-user', help='Filter by username')
+        setuptoken_list.add_argument('--output', '-o', choices=['table', 'json', 'yaml'],
+                                    default='table', help='Output format (default: table)')
         
         # setuptoken get
         setuptoken_get = setuptoken_sub.add_parser('get', help='Get setup token details')
         setuptoken_get.add_argument('token_id', help='Setup token ID')
+        setuptoken_get.add_argument('--output', '-o', choices=['table', 'json', 'yaml'],
+                                   default='table', help='Output format (default: table)')
         
         # setuptoken create
         setuptoken_create = setuptoken_sub.add_parser('create', help='Create setup token')
@@ -173,6 +227,60 @@ class SunrayCommand(Command):
                                help='Cache scope to clear')
         cache_clear.add_argument('--sr-target', help='Target for sessions scope')
         
+        # Audit log commands
+        auditlog = subparsers.add_parser('auditlog', help='Manage audit logs')
+        auditlog_sub = auditlog.add_subparsers(dest='action', help='Action')
+        
+        # auditlog get/list
+        auditlog_get = auditlog_sub.add_parser('get', help='Get audit logs')
+        auditlog_get.add_argument('--since', default='24h',
+                                 help='Time duration (e.g., 1h, 24h, 7d) (default: 24h)')
+        auditlog_get.add_argument('--event-type', action='append',
+                                 help='Filter by event type (can be used multiple times)')
+        auditlog_get.add_argument('--severity', choices=['info', 'warning', 'error', 'critical'],
+                                 help='Filter by severity level')
+        auditlog_get.add_argument('--user', help='Filter by sunray username')
+        auditlog_get.add_argument('--admin', help='Filter by admin username')
+        auditlog_get.add_argument('--worker', help='Filter by worker ID')
+        auditlog_get.add_argument('--request-id', help='Filter by request ID')
+        auditlog_get.add_argument('--sublimation-only', action='store_true',
+                                 help='Only show WAF bypass (sublimation) cookie events')
+        auditlog_get.add_argument('--limit', type=int, default=100,
+                                 help='Maximum results (default: 100)')
+        auditlog_get.add_argument('--output', '-o', choices=['table', 'json', 'yaml'],
+                                 default='table', help='Output format (default: table)')
+        auditlog_get.add_argument('--follow', '-f', action='store_true',
+                                 help='Follow/stream new events (not implemented yet)')
+        auditlog_get.add_argument('--no-headers', action='store_true',
+                                 help='Omit headers in table output')
+        
+        # auditlog list (alias for get)
+        auditlog_list = auditlog_sub.add_parser('list', help='List audit logs (alias for get)')
+        auditlog_list.add_argument('--since', default='24h',
+                                  help='Time duration (e.g., 1h, 24h, 7d) (default: 24h)')
+        auditlog_list.add_argument('--event-type', action='append',
+                                  help='Filter by event type (can be used multiple times)')
+        auditlog_list.add_argument('--severity', choices=['info', 'warning', 'error', 'critical'],
+                                  help='Filter by severity level')
+        auditlog_list.add_argument('--user', help='Filter by sunray username')
+        auditlog_list.add_argument('--admin', help='Filter by admin username')
+        auditlog_list.add_argument('--worker', help='Filter by worker ID')
+        auditlog_list.add_argument('--request-id', help='Filter by request ID')
+        auditlog_list.add_argument('--sublimation-only', action='store_true',
+                                  help='Only show WAF bypass (sublimation) cookie events')
+        auditlog_list.add_argument('--limit', type=int, default=100,
+                                  help='Maximum results (default: 100)')
+        auditlog_list.add_argument('--output', '-o', choices=['table', 'json', 'yaml'],
+                                  default='table', help='Output format (default: table)')
+        auditlog_list.add_argument('--no-headers', action='store_true',
+                                  help='Omit headers in table output')
+        
+        # auditlog describe
+        auditlog_describe = auditlog_sub.add_parser('describe', help='Describe specific audit log entry')
+        auditlog_describe.add_argument('log_id', type=int, help='Audit log entry ID')
+        auditlog_describe.add_argument('--output', '-o', choices=['table', 'json', 'yaml'],
+                                      default='table', help='Output format (default: table)')
+        
         # Parse arguments
         parsed_args = parser.parse_args(args)
         
@@ -193,7 +301,15 @@ class SunrayCommand(Command):
             # Create registry and cursor
             registry = Registry(database)
             with registry.cursor() as cr:
-                env = api.Environment(cr, SUPERUSER_ID, {})
+                # Setup CLI context for audit logging
+                import uuid
+                request_id = f"cli:{uuid.uuid4()}"
+                context = {
+                    'sunray_request_id': request_id,
+                    'sunray_event_source': 'cli',
+                    'sunray_admin_user_id': SUPERUSER_ID
+                }
+                env = api.Environment(cr, SUPERUSER_ID, context)
                 
                 # Route to appropriate handler
                 if parsed_args.resource == 'apikey':
@@ -204,13 +320,17 @@ class SunrayCommand(Command):
                     self._handle_session(env, parsed_args)
                 elif parsed_args.resource == 'host':
                     self._handle_host(env, parsed_args)
+                elif parsed_args.resource == 'cron':
+                    self._handle_cron(env, parsed_args)
                 elif parsed_args.resource == 'setuptoken':
                     self._handle_setuptoken(env, parsed_args)
                 elif parsed_args.resource == 'cache':
                     self._handle_cache(env, parsed_args)
+                elif parsed_args.resource == 'auditlog':
+                    self._handle_auditlog(env, parsed_args)
                 
                 # Commit changes for write operations
-                if parsed_args.action in ['create', 'delete', 'revoke', 'create-token']:
+                if parsed_args.action in ['create', 'delete', 'revoke', 'create-token', 'cleanup', 'trigger']:
                     cr.commit()
                     
             return 0
@@ -231,13 +351,13 @@ class SunrayCommand(Command):
                 print("No API keys found")
                 return
             
-            print(f"{'NAME':<30} {'ACTIVE':<8} {'CREATED':<20} {'DESCRIPTION'}")
-            print("-" * 80)
-            for key in keys:
-                active = '✓' if key.is_active else '✗'
-                created = key.create_date.strftime('%Y-%m-%d %H:%M:%S')
-                desc = (key.description or '')[:30]
-                print(f"{key.name:<30} {active:<8} {created:<20} {desc}")
+            # Format output
+            if args.output == 'json':
+                self._output_apikeys_json(keys)
+            elif args.output == 'yaml':
+                self._output_apikeys_yaml(keys)
+            else:
+                self._output_apikeys_table(keys)
         
         elif args.action == 'get':
             # Search by name or ID
@@ -250,13 +370,13 @@ class SunrayCommand(Command):
                 print(f"API key '{args.name}' not found")
                 return
             
-            print(f"Name:        {key.name}")
-            print(f"Key:         {key.key}")
-            print(f"Active:      {'Yes' if key.is_active else 'No'}")
-            print(f"Scopes:      {key.scopes or 'all'}")
-            print(f"Description: {key.description or ''}")
-            print(f"Created:     {key.create_date}")
-            print(f"Modified:    {key.write_date}")
+            # Format output
+            if args.output == 'json':
+                self._output_apikeys_json([key])
+            elif args.output == 'yaml':
+                self._output_apikeys_yaml([key])
+            else:
+                self._output_apikey_detailed(key)
         
         elif args.action == 'create':
             data = {
@@ -443,38 +563,30 @@ class SunrayCommand(Command):
                 print("No sessions found")
                 return
             
-            print(f"{'SESSION ID':<20} {'USER':<15} {'HOST':<20} {'IP ADDRESS':<15} {'STATUS':<10} {'CREATED'}")
-            print("-" * 100)
-            for session in sessions:
-                sid = session.session_id[:18] + '..' if len(session.session_id) > 20 else session.session_id
-                user = session.user_id.username if session.user_id else 'Unknown'
-                host = (session.host_id.domain if session.host_id else '')[:20]
-                ip = session.ip_address or 'Unknown'
-                status = 'Active' if session.is_active else 'Expired'
-                created = session.created_at.strftime('%Y-%m-%d %H:%M')
-                print(f"{sid:<20} {user:<15} {host:<20} {ip:<15} {status:<10} {created}")
+            # Format output
+            if args.output == 'json':
+                self._output_sessions_json(sessions)
+            elif args.output == 'yaml':
+                self._output_sessions_yaml(sessions)
+            else:
+                self._output_sessions_table(sessions)
         
-        elif args.action == 'revoke':
-            session = Session.search([('session_id', '=', args.session_id)], limit=1)
-            
-            if not session:
-                # Try partial match
-                session = Session.search([('session_id', 'like', args.session_id + '%')], limit=1)
-            
+        elif args.action == 'get':
+            session = self._find_session(Session, args.session_id)
             if not session:
                 print(f"Session '{args.session_id}' not found")
                 return
             
-            session.write({'is_active': False})
-            print(f"Session revoked: {session.session_id}")
+            # Format output
+            if args.output == 'json':
+                self._output_sessions_json([session], detailed=True)
+            elif args.output == 'yaml':
+                self._output_sessions_yaml([session], detailed=True)
+            else:
+                self._output_session_detailed(session)
         
         elif args.action == 'delete':
-            session = Session.search([('session_id', '=', args.session_id)], limit=1)
-            
-            if not session:
-                # Try partial match
-                session = Session.search([('session_id', 'like', args.session_id + '%')], limit=1)
-            
+            session = self._find_session(Session, args.session_id)
             if not session:
                 print(f"Session '{args.session_id}' not found")
                 return
@@ -490,6 +602,49 @@ class SunrayCommand(Command):
                 # Soft delete - mark as inactive
                 session.write({'is_active': False})
                 print(f"Session marked as inactive: {session_id} (user: {user})")
+        
+        elif args.action == 'revoke':
+            session = self._find_session(Session, args.session_id)
+            if not session:
+                print(f"Session '{args.session_id}' not found")
+                return
+            
+            reason = args.reason or 'CLI revocation'
+            session.revoke(reason=reason)
+            print(f"Session revoked: {session.session_id}")
+            print(f"Reason: {reason}")
+        
+        elif args.action == 'cleanup':
+            # Find expired sessions
+            expired_sessions = Session.search([
+                ('expires_at', '<', fields.Datetime.now()),
+                ('is_active', '=', True)
+            ])
+            
+            if not expired_sessions:
+                print("No expired sessions found")
+                return
+            
+            if args.dry_run:
+                print(f"Would remove {len(expired_sessions)} expired sessions:")
+                for session in expired_sessions:
+                    print(f"  - {session.session_id} (user: {session.user_id.username}, expired: {session.expires_at})")
+            else:
+                count = len(expired_sessions)
+                expired_sessions.write({'is_active': False})
+                print(f"Cleaned up {count} expired sessions")
+        
+        elif args.action == 'stats':
+            stats = self._calculate_session_stats(Session)
+            
+            if args.output == 'json':
+                import json
+                print(json.dumps(stats, indent=2))
+            elif args.output == 'yaml':
+                import yaml
+                print(yaml.dump(stats, default_flow_style=False))
+            else:
+                self._output_session_stats_table(stats)
     
     def _handle_host(self, env, args):
         """Handle host operations"""
@@ -900,6 +1055,646 @@ class SunrayCommand(Command):
                     print(f"✗ Failed to invalidate cache on {worker_url}: {e}")
             
             print(f"\nInvalidated cache on {success_count}/{len(worker_urls)} workers")
+
+    def _handle_auditlog(self, env, args):
+        """Handle audit log commands"""
+        import json
+        from datetime import datetime, timedelta
+        
+        AuditLog = env['sunray.audit.log']
+        
+        if args.action in ['get', 'list']:
+            # Parse time duration
+            since_filter = self._parse_time_duration(args.since)
+            
+            # Build domain filter
+            domain = [('timestamp', '>=', since_filter)]
+            
+            if args.event_type:
+                domain.append(('event_type', 'in', args.event_type))
+            
+            if getattr(args, 'sublimation_only', False):
+                domain.append(('event_type', 'like', 'waf_bypass.%'))
+            
+            if args.severity:
+                domain.append(('severity', '=', args.severity))
+            
+            if args.user:
+                # Search by sunray username
+                sunray_user = env['sunray.user'].search([('username', '=', args.user)], limit=1)
+                if sunray_user:
+                    domain.append(('sunray_user_id', '=', sunray_user.id))
+                else:
+                    # Also check username field for backward compatibility
+                    domain.append(('username', '=', args.user))
+            
+            if args.admin:
+                # Search by admin username
+                admin_user = env['res.users'].search([('login', '=', args.admin)], limit=1)
+                if admin_user:
+                    domain.append(('sunray_admin_user_id', '=', admin_user.id))
+            
+            if args.worker:
+                domain.append(('sunray_worker', 'ilike', args.worker))
+            
+            if args.request_id:
+                domain.append(('request_id', '=', args.request_id))
+            
+            # Search audit logs
+            logs = AuditLog.search(domain, limit=args.limit, order='timestamp desc')
+            
+            if not logs:
+                print("No audit logs found matching the criteria.")
+                return
+            
+            # Format output
+            if args.output == 'json':
+                self._output_auditlog_json(logs)
+            elif args.output == 'yaml':
+                self._output_auditlog_yaml(logs)
+            else:
+                self._output_auditlog_table(logs, args.no_headers)
+                
+        elif args.action == 'describe':
+            # Get specific log entry
+            log = AuditLog.browse(args.log_id)
+            if not log.exists():
+                print(f"Error: Audit log entry {args.log_id} not found")
+                return
+            
+            if args.output == 'json':
+                self._output_auditlog_json([log], detailed=True)
+            elif args.output == 'yaml':
+                self._output_auditlog_yaml([log], detailed=True)
+            else:
+                self._output_auditlog_describe(log)
+    
+    def _parse_time_duration(self, duration_str):
+        """Parse duration string like '1h', '24h', '7d' into datetime"""
+        from datetime import datetime, timedelta
+        
+        if duration_str.endswith('h'):
+            hours = int(duration_str[:-1])
+            return datetime.now() - timedelta(hours=hours)
+        elif duration_str.endswith('d'):
+            days = int(duration_str[:-1])
+            return datetime.now() - timedelta(days=days)
+        elif duration_str.endswith('m'):
+            minutes = int(duration_str[:-1])
+            return datetime.now() - timedelta(minutes=minutes)
+        else:
+            raise ValueError(f"Invalid duration format: {duration_str}. Use format like '1h', '24h', '7d'")
+    
+    def _output_auditlog_table(self, logs, no_headers=False):
+        """Output audit logs in table format"""
+        if not no_headers:
+            print(f"{'ID':<6} {'Timestamp':<20} {'Event Type':<25} {'Severity':<8} {'Admin User':<15} {'Sunray User':<15} {'Worker':<12} {'Request ID':<20}")
+            print("-" * 140)
+        
+        for log in logs:
+            timestamp = log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if log.timestamp else 'N/A'
+            admin_user = log.sunray_admin_user_id.login if log.sunray_admin_user_id else ''
+            sunray_user = log.sunray_user_id.username if log.sunray_user_id else (log.username or '')
+            worker = log.sunray_worker[:11] + '..' if log.sunray_worker and len(log.sunray_worker) > 12 else (log.sunray_worker or '')
+            request_id = log.request_id[:19] + '..' if log.request_id and len(log.request_id) > 20 else (log.request_id or '')
+            
+            print(f"{log.id:<6} {timestamp:<20} {log.event_type:<25} {log.severity:<8} {admin_user:<15} {sunray_user:<15} {worker:<12} {request_id:<20}")
+    
+    def _output_auditlog_json(self, logs, detailed=False):
+        """Output audit logs in JSON format"""
+        import json
+        
+        result = []
+        for log in logs:
+            entry = {
+                'id': log.id,
+                'timestamp': log.timestamp.isoformat() if log.timestamp else None,
+                'event_type': log.event_type,
+                'severity': log.severity,
+                'sunray_admin_user_id': log.sunray_admin_user_id.id if log.sunray_admin_user_id else None,
+                'sunray_admin_user_login': log.sunray_admin_user_id.login if log.sunray_admin_user_id else None,
+                'sunray_user_id': log.sunray_user_id.id if log.sunray_user_id else None,
+                'sunray_user_username': log.sunray_user_id.username if log.sunray_user_id else None,
+                'sunray_worker': log.sunray_worker,
+                'request_id': log.request_id,
+                'event_source': log.event_source,
+                'ip_address': log.ip_address,
+                'username': log.username,  # Legacy field
+            }
+            
+            if detailed:
+                entry.update({
+                    'user_agent': log.user_agent,
+                    'details': log.get_details_dict(),
+                })
+            
+            result.append(entry)
+        
+        print(json.dumps(result, indent=2))
+    
+    def _output_auditlog_yaml(self, logs, detailed=False):
+        """Output audit logs in YAML format"""
+        import yaml
+        
+        result = []
+        for log in logs:
+            entry = {
+                'id': log.id,
+                'timestamp': log.timestamp.isoformat() if log.timestamp else None,
+                'event_type': log.event_type,
+                'severity': log.severity,
+                'sunray_admin_user_id': log.sunray_admin_user_id.id if log.sunray_admin_user_id else None,
+                'sunray_admin_user_login': log.sunray_admin_user_id.login if log.sunray_admin_user_id else None,
+                'sunray_user_id': log.sunray_user_id.id if log.sunray_user_id else None,
+                'sunray_user_username': log.sunray_user_id.username if log.sunray_user_id else None,
+                'sunray_worker': log.sunray_worker,
+                'request_id': log.request_id,
+                'event_source': log.event_source,
+                'ip_address': log.ip_address,
+                'username': log.username,  # Legacy field
+            }
+            
+            if detailed:
+                entry.update({
+                    'user_agent': log.user_agent,
+                    'details': log.get_details_dict(),
+                })
+            
+            result.append(entry)
+        
+        print(yaml.dump(result, default_flow_style=False))
+    
+    def _output_auditlog_describe(self, log):
+        """Output detailed audit log entry in human-readable format"""
+        print(f"Audit Log Entry #{log.id}")
+        print("-" * 40)
+        print(f"Timestamp:      {log.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC') if log.timestamp else 'N/A'}")
+        print(f"Event Type:     {log.event_type}")
+        print(f"Severity:       {log.severity}")
+        print(f"Event Source:   {log.event_source or 'N/A'}")
+        print(f"Request ID:     {log.request_id or 'N/A'}")
+        print()
+        print("User Information:")
+        print(f"  Admin User:   {log.sunray_admin_user_id.login if log.sunray_admin_user_id else 'N/A'}")
+        print(f"  Sunray User:  {log.sunray_user_id.username if log.sunray_user_id else 'N/A'}")
+        print(f"  Worker:       {log.sunray_worker or 'N/A'}")
+        print(f"  Username:     {log.username or 'N/A'} (legacy field)")
+        print()
+        print("Network Information:")
+        print(f"  IP Address:   {log.ip_address or 'N/A'}")
+        print(f"  User Agent:   {log.user_agent or 'N/A'}")
+        print()
+        if log.details:
+            print("Event Details:")
+            details = log.get_details_dict()
+            if isinstance(details, dict):
+                for key, value in details.items():
+                    print(f"  {key}: {value}")
+            else:
+                print(f"  {details}")
+    
+    def _handle_cron(self, env, args):
+        """Handle cron job operations"""
+        Cron = env['ir.cron']
+        
+        if args.action == 'list':
+            # Search for Sunray-related cron jobs
+            crons = Cron.search([('name', 'like', 'Sunray:%')], order='name')
+            
+            if not crons:
+                print("No Sunray cron jobs found")
+                return
+            
+            if args.output == 'json':
+                self._output_crons_json(crons)
+            elif args.output == 'yaml':
+                self._output_crons_yaml(crons)
+            else:
+                self._output_crons_table(crons)
+        
+        elif args.action == 'get':
+            cron = Cron.browse(args.cron_id)
+            if not cron.exists():
+                print(f"Cron job {args.cron_id} not found")
+                return
+            
+            if args.output == 'json':
+                self._output_crons_json([cron], detailed=True)
+            elif args.output == 'yaml':
+                self._output_crons_yaml([cron], detailed=True)
+            else:
+                self._output_cron_detailed(cron)
+        
+        elif args.action == 'trigger':
+            cron = Cron.browse(args.cron_id)
+            if not cron.exists():
+                print(f"Cron job {args.cron_id} not found")
+                return
+            
+            # Trigger the cron job via Odoo's "Run Now" method
+            try:
+                cron.method_direct_trigger()
+                print(f"✓ Cron job '{cron.name}' triggered successfully")
+                print(f"  ID: {cron.id}")
+                print(f"  Last run: {cron.lastcall or 'Never'}")
+            except Exception as e:
+                print(f"✗ Failed to trigger cron job: {e}")
+    
+    def _find_session(self, Session, session_id):
+        """Find session by exact ID or partial match"""
+        session = Session.search([('session_id', '=', session_id)], limit=1)
+        if not session:
+            # Try partial match
+            session = Session.search([('session_id', 'like', session_id + '%')], limit=1)
+        return session
+    
+    def _output_sessions_table(self, sessions):
+        """Output sessions in table format"""
+        print(f"{'SESSION ID':<20} {'USER':<15} {'HOST':<20} {'IP ADDRESS':<15} {'STATUS':<10} {'CREATED'}")
+        print("-" * 100)
+        for session in sessions:
+            sid = session.session_id[:18] + '..' if len(session.session_id) > 20 else session.session_id
+            user = session.user_id.username if session.user_id else 'Unknown'
+            host = (session.host_id.domain if session.host_id else '')[:20]
+            ip = session.created_ip or 'Unknown'
+            status = 'Active' if session.is_active else 'Expired'
+            created = session.created_at.strftime('%Y-%m-%d %H:%M')
+            print(f"{sid:<20} {user:<15} {host:<20} {ip:<15} {status:<10} {created}")
+    
+    def _output_session_detailed(self, session):
+        """Output detailed session information with computed fields marked [C]"""
+        from datetime import datetime
+        
+        print(f"Session ID:       {session.session_id}")
+        print(f"User:             {session.user_id.username if session.user_id else 'Unknown'}")
+        print(f"Host:             {session.host_id.domain if session.host_id else 'Unknown'}")
+        print(f"Active:           {'Yes' if session.is_active else 'No'}")
+        print(f"Revoked:          {'Yes' if session.revoked else 'No'}")
+        
+        if session.revoked:
+            print(f"Revoked At:       {session.revoked_at or 'Unknown'}")
+            print(f"Revoked Reason:   {session.revoked_reason or 'None specified'}")
+        
+        print(f"Created At:       {session.created_at}")
+        print(f"Last Activity:    {session.last_activity}")
+        print(f"Expires At:       {session.expires_at}")
+        
+        # Computed fields with [C] marker
+        now = fields.Datetime.now()
+        if session.expires_at:
+            expired = session.expires_at < now
+            if expired:
+                time_diff = now - session.expires_at
+                print(f"[C] Expired:      Yes ({time_diff} ago)")
+            else:
+                time_diff = session.expires_at - now
+                print(f"[C] Expired:      No ({time_diff} remaining)")
+        else:
+            print(f"[C] Expired:      Unknown (no expiry set)")
+        
+        print(f"Created IP:       {session.created_ip or 'Unknown'}")
+        print(f"Last IP:          {session.last_ip or 'Same as created'}")
+        print(f"User Agent:       {(session.user_agent or 'Unknown')[:80]}")
+        print(f"Device Fingerprint: {session.device_fingerprint or 'None'}")
+        print(f"Passkey Used:     {session.passkey_id.credential_id[:20] + '...' if session.passkey_id else 'Unknown'}")
+        print(f"CSRF Token:       {session.csrf_token[:20] + '...' if session.csrf_token else 'None'}")
+        
+        if session.totp_verified:
+            print(f"TOTP Verified:    Yes (at {session.totp_verified_at})")
+        else:
+            print(f"TOTP Verified:    No")
+        
+        if session.risk_score:
+            print(f"Risk Score:       {session.risk_score}")
+    
+    def _output_sessions_json(self, sessions, detailed=False):
+        """Output sessions in JSON format"""
+        import json
+        
+        result = []
+        for session in sessions:
+            entry = {
+                'session_id': session.session_id,
+                'user_id': session.user_id.id if session.user_id else None,
+                'username': session.user_id.username if session.user_id else None,
+                'host_id': session.host_id.id if session.host_id else None,
+                'host_domain': session.host_id.domain if session.host_id else None,
+                'is_active': session.is_active,
+                'revoked': session.revoked,
+                'created_at': session.created_at.isoformat() if session.created_at else None,
+                'last_activity': session.last_activity.isoformat() if session.last_activity else None,
+                'expires_at': session.expires_at.isoformat() if session.expires_at else None,
+                'created_ip': session.created_ip,
+                'last_ip': session.last_ip,
+            }
+            
+            if detailed:
+                now = fields.Datetime.now()
+                entry.update({
+                    'revoked_at': session.revoked_at.isoformat() if session.revoked_at else None,
+                    'revoked_reason': session.revoked_reason,
+                    'user_agent': session.user_agent,
+                    'device_fingerprint': session.device_fingerprint,
+                    'credential_id': session.credential_id,
+                    'csrf_token': session.csrf_token,
+                    'totp_verified': session.totp_verified,
+                    'totp_verified_at': session.totp_verified_at.isoformat() if session.totp_verified_at else None,
+                    'risk_score': session.risk_score,
+                    # Computed fields
+                    'computed_expired': session.expires_at < now if session.expires_at else None,
+                    'computed_time_to_expiry': str(session.expires_at - now) if session.expires_at and session.expires_at > now else None,
+                })
+            
+            result.append(entry)
+        
+        print(json.dumps(result, indent=2))
+    
+    def _output_sessions_yaml(self, sessions, detailed=False):
+        """Output sessions in YAML format"""
+        import yaml
+        
+        result = []
+        for session in sessions:
+            entry = {
+                'session_id': session.session_id,
+                'user_id': session.user_id.id if session.user_id else None,
+                'username': session.user_id.username if session.user_id else None,
+                'host_id': session.host_id.id if session.host_id else None,
+                'host_domain': session.host_id.domain if session.host_id else None,
+                'is_active': session.is_active,
+                'revoked': session.revoked,
+                'created_at': session.created_at.isoformat() if session.created_at else None,
+                'last_activity': session.last_activity.isoformat() if session.last_activity else None,
+                'expires_at': session.expires_at.isoformat() if session.expires_at else None,
+                'created_ip': session.created_ip,
+                'last_ip': session.last_ip,
+            }
+            
+            if detailed:
+                now = fields.Datetime.now()
+                entry.update({
+                    'revoked_at': session.revoked_at.isoformat() if session.revoked_at else None,
+                    'revoked_reason': session.revoked_reason,
+                    'user_agent': session.user_agent,
+                    'device_fingerprint': session.device_fingerprint,
+                    'credential_id': session.credential_id,
+                    'csrf_token': session.csrf_token,
+                    'totp_verified': session.totp_verified,
+                    'totp_verified_at': session.totp_verified_at.isoformat() if session.totp_verified_at else None,
+                    'risk_score': session.risk_score,
+                    # Computed fields
+                    'computed_expired': session.expires_at < now if session.expires_at else None,
+                    'computed_time_to_expiry': str(session.expires_at - now) if session.expires_at and session.expires_at > now else None,
+                })
+            
+            result.append(entry)
+        
+        print(yaml.dump(result, default_flow_style=False))
+    
+    def _calculate_session_stats(self, Session):
+        """Calculate session statistics"""
+        now = fields.Datetime.now()
+        
+        # Active sessions
+        active_count = Session.search_count([('is_active', '=', True)])
+        
+        # Expired but not cleaned up
+        expired_count = Session.search_count([
+            ('expires_at', '<', now),
+            ('is_active', '=', True)
+        ])
+        
+        # Total sessions
+        total_count = Session.search_count([])
+        
+        # Revoked sessions
+        revoked_count = Session.search_count([('revoked', '=', True)])
+        
+        # Sessions by user (top 10)
+        users_query = """
+            SELECT su.username, COUNT(ss.id) as session_count
+            FROM sunray_session ss
+            JOIN sunray_user su ON ss.user_id = su.id
+            WHERE ss.is_active = true
+            GROUP BY su.username
+            ORDER BY session_count DESC
+            LIMIT 10
+        """
+        Session.env.cr.execute(users_query)
+        users_stats = Session.env.cr.fetchall()
+        
+        return {
+            'active_sessions': active_count,
+            'expired_sessions': expired_count,
+            'total_sessions': total_count,
+            'revoked_sessions': revoked_count,
+            'cleanup_needed': expired_count > 0,
+            'top_users': [{'username': u[0], 'session_count': u[1]} for u in users_stats]
+        }
+    
+    def _output_session_stats_table(self, stats):
+        """Output session statistics in table format"""
+        print("Session Statistics")
+        print("-" * 40)
+        print(f"Active Sessions:     {stats['active_sessions']}")
+        print(f"Expired Sessions:    {stats['expired_sessions']}")
+        print(f"Total Sessions:      {stats['total_sessions']}")
+        print(f"Revoked Sessions:    {stats['revoked_sessions']}")
+        print(f"Cleanup Needed:      {'Yes' if stats['cleanup_needed'] else 'No'}")
+        
+        if stats['top_users']:
+            print("\nTop Users by Active Sessions:")
+            print(f"{'USERNAME':<20} {'SESSIONS'}")
+            print("-" * 30)
+            for user_stat in stats['top_users']:
+                print(f"{user_stat['username']:<20} {user_stat['session_count']}")
+    
+    def _output_crons_table(self, crons):
+        """Output cron jobs in table format"""
+        print(f"{'ID':<6} {'NAME':<40} {'SCHEDULE':<15} {'ACTIVE':<8} {'LAST RUN':<20}")
+        print("-" * 100)
+        for cron in crons:
+            schedule = f"{cron.interval_number}{cron.interval_type[0]}"  # e.g., "1d", "6h"
+            active = '✓' if cron.active else '✗'
+            last_run = cron.lastcall.strftime('%Y-%m-%d %H:%M') if cron.lastcall else 'Never'
+            name = cron.name[:38] + '..' if len(cron.name) > 40 else cron.name
+            print(f"{cron.id:<6} {name:<40} {schedule:<15} {active:<8} {last_run:<20}")
+    
+    def _output_cron_detailed(self, cron):
+        """Output detailed cron job information with computed fields marked [C]"""
+        from datetime import datetime, timedelta
+        
+        print(f"ID:               {cron.id}")
+        print(f"Name:             {cron.name}")
+        print(f"Model:            {cron.model_id.model if cron.model_id else 'Unknown'}")
+        print(f"Function:         {cron.state}")
+        print(f"Code:             {cron.code or 'N/A'}")
+        print(f"Active:           {'Yes' if cron.active else 'No'}")
+        print(f"User:             {cron.user_id.name if cron.user_id else 'System'}")
+        print(f"Interval:         Every {cron.interval_number} {cron.interval_type}")
+        print(f"Last Run:         {cron.lastcall or 'Never'}")
+        print(f"Next Run:         {cron.nextcall or 'Not scheduled'}")
+        
+        # Computed fields with [C] marker
+        if cron.lastcall:
+            now = fields.Datetime.now()
+            time_since = now - cron.lastcall
+            print(f"[C] Time Since Last Run: {time_since}")
+        
+        if cron.nextcall:
+            now = fields.Datetime.now()
+            if cron.nextcall > now:
+                time_until = cron.nextcall - now
+                print(f"[C] Time Until Next Run: {time_until}")
+            else:
+                time_overdue = now - cron.nextcall
+                print(f"[C] Overdue By:     {time_overdue}")
+        
+        print(f"Priority:         {cron.priority or 5}")
+        print(f"Number of Calls:  {getattr(cron, 'numbercall', 'Unlimited') or 'Unlimited'}")
+        if getattr(cron, 'doall', False):
+            print(f"Execute Missed:   Yes")
+        
+        print(f"Created:          {cron.create_date}")
+        print(f"Modified:         {cron.write_date}")
+    
+    def _output_crons_json(self, crons, detailed=False):
+        """Output cron jobs in JSON format"""
+        import json
+        
+        result = []
+        for cron in crons:
+            entry = {
+                'id': cron.id,
+                'name': cron.name,
+                'model': cron.model_id.model if cron.model_id else None,
+                'state': cron.state,
+                'code': cron.code,
+                'active': cron.active,
+                'interval_number': cron.interval_number,
+                'interval_type': cron.interval_type,
+                'lastcall': cron.lastcall.isoformat() if cron.lastcall else None,
+                'nextcall': cron.nextcall.isoformat() if cron.nextcall else None,
+            }
+            
+            if detailed:
+                now = fields.Datetime.now()
+                entry.update({
+                    'user_id': cron.user_id.id if cron.user_id else None,
+                    'user_name': cron.user_id.name if cron.user_id else None,
+                    'priority': cron.priority,
+                    'numbercall': getattr(cron, 'numbercall', None),
+                    'doall': getattr(cron, 'doall', False),
+                    'create_date': cron.create_date.isoformat() if cron.create_date else None,
+                    'write_date': cron.write_date.isoformat() if cron.write_date else None,
+                    # Computed fields
+                    'computed_time_since_last_run': str(now - cron.lastcall) if cron.lastcall else None,
+                    'computed_time_until_next_run': str(cron.nextcall - now) if cron.nextcall and cron.nextcall > now else None,
+                    'computed_overdue': cron.nextcall < now if cron.nextcall else False,
+                })
+            
+            result.append(entry)
+        
+        print(json.dumps(result, indent=2))
+    
+    def _output_crons_yaml(self, crons, detailed=False):
+        """Output cron jobs in YAML format"""
+        import yaml
+        
+        result = []
+        for cron in crons:
+            entry = {
+                'id': cron.id,
+                'name': cron.name,
+                'model': cron.model_id.model if cron.model_id else None,
+                'state': cron.state,
+                'code': cron.code,
+                'active': cron.active,
+                'interval_number': cron.interval_number,
+                'interval_type': cron.interval_type,
+                'lastcall': cron.lastcall.isoformat() if cron.lastcall else None,
+                'nextcall': cron.nextcall.isoformat() if cron.nextcall else None,
+            }
+            
+            if detailed:
+                now = fields.Datetime.now()
+                entry.update({
+                    'user_id': cron.user_id.id if cron.user_id else None,
+                    'user_name': cron.user_id.name if cron.user_id else None,
+                    'priority': cron.priority,
+                    'numbercall': getattr(cron, 'numbercall', None),
+                    'doall': getattr(cron, 'doall', False),
+                    'create_date': cron.create_date.isoformat() if cron.create_date else None,
+                    'write_date': cron.write_date.isoformat() if cron.write_date else None,
+                    # Computed fields
+                    'computed_time_since_last_run': str(now - cron.lastcall) if cron.lastcall else None,
+                    'computed_time_until_next_run': str(cron.nextcall - now) if cron.nextcall and cron.nextcall > now else None,
+                    'computed_overdue': cron.nextcall < now if cron.nextcall else False,
+                })
+            
+            result.append(entry)
+        
+        print(yaml.dump(result, default_flow_style=False))
+    
+    def _output_apikeys_table(self, keys):
+        """Output API keys in table format"""
+        print(f"{'NAME':<30} {'ACTIVE':<8} {'CREATED':<20} {'DESCRIPTION'}")
+        print("-" * 80)
+        for key in keys:
+            active = '✓' if key.is_active else '✗'
+            created = key.create_date.strftime('%Y-%m-%d %H:%M:%S')
+            desc = (key.description or '')[:30]
+            print(f"{key.name:<30} {active:<8} {created:<20} {desc}")
+    
+    def _output_apikeys_json(self, keys):
+        """Output API keys in JSON format"""
+        import json
+        
+        result = []
+        for key in keys:
+            entry = {
+                'id': key.id,
+                'name': key.name,
+                'key': key.key,  # Show full key in JSON
+                'is_active': key.is_active,
+                'scopes': key.scopes,
+                'description': key.description,
+                'create_date': key.create_date.isoformat() if key.create_date else None,
+                'write_date': key.write_date.isoformat() if key.write_date else None,
+            }
+            result.append(entry)
+        
+        print(json.dumps(result, indent=2))
+    
+    def _output_apikeys_yaml(self, keys):
+        """Output API keys in YAML format"""
+        import yaml
+        
+        result = []
+        for key in keys:
+            entry = {
+                'id': key.id,
+                'name': key.name,
+                'key': key.key,  # Show full key in YAML
+                'is_active': key.is_active,
+                'scopes': key.scopes,
+                'description': key.description,
+                'create_date': key.create_date.isoformat() if key.create_date else None,
+                'write_date': key.write_date.isoformat() if key.write_date else None,
+            }
+            result.append(entry)
+        
+        print(yaml.dump(result, default_flow_style=False))
+    
+    def _output_apikey_detailed(self, key):
+        """Output detailed API key information"""
+        print(f"Name:        {key.name}")
+        print(f"Key:         {key.key}")
+        print(f"Active:      {'Yes' if key.is_active else 'No'}")
+        print(f"Scopes:      {key.scopes or 'all'}")
+        print(f"Description: {key.description or ''}")
+        print(f"Created:     {key.create_date}")
+        print(f"Modified:    {key.write_date}")
 
 
 # Register the command

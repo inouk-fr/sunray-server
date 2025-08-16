@@ -59,7 +59,7 @@ Technical Components:
     'application': True,
     'auto_install': False,
     'external_dependencies': {
-        'python': ['pyotp', 'qrcode', 'jose'],
+        'python': ['pyotp', 'qrcode', 'jose', 'PyYAML'],
     },
     'assets': {
         'web.assets_backend': [

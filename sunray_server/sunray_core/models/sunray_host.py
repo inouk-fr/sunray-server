@@ -95,6 +95,23 @@ class SunrayHost(models.Model):
              '- 24h = 86400'
     )
     
+    # WAF integration
+    bypass_waf_for_authenticated = fields.Boolean(
+        string='Bypass Cloudflare WAF for Authenticated Users',
+        default=False,
+        help='Enable WAF bypass cookie for authenticated users. '
+             'Creates hidden cookie with IP/UA binding that allows Cloudflare firewall rules '
+             'to skip WAF processing. Worker still validates authentication for security. '
+             'Requires manual Cloudflare firewall rule configuration.'
+    )
+    waf_bypass_revalidation_minutes = fields.Integer(
+        string='WAF Bypass Revalidation Period (minutes)',
+        default=15,
+        help='Force cookie revalidation after this period. '
+             'Users must re-authenticate if their WAF bypass cookie is older than this. '
+             'Shorter periods increase security but may require more frequent re-authentication.'
+    )
+    
     # Version tracking for cache invalidation
     config_version = fields.Datetime(
         string='Configuration Version',
@@ -249,12 +266,12 @@ class SunrayHost(models.Model):
                 )
                 
                 # Log the action
-                self.env['sunray.audit.log'].create({
-                    'event_type': 'cache_invalidation',
-                    'severity': 'info',
-                    'details': f'Cache refresh triggered for host {record.domain}',
-                    'user_id': self.env.user.id
-                })
+                self.env['sunray.audit.log'].create_admin_event(
+                    event_type='cache_invalidation',
+                    severity='info',
+                    details=f'Cache refresh triggered for host {record.domain}',
+                    admin_user_id=self.env.user.id
+                )
             except Exception as e:
                 _logger.error(f"Failed to trigger cache refresh for host {record.domain}: {str(e)}")
                 raise UserError(f"Failed to trigger cache refresh: {str(e)}")

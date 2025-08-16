@@ -95,6 +95,12 @@ Security Notes:
         self.generated_token = token_value
         self.token_display = instructions
         
+        # We commit now since user may be tempted to use token
+        # while it is not commited. This would trigger an API Call 
+        # from the worker which will fail and the worker cache 
+        # will be set with no token !
+        self.env.cr.commit()
+
         # Return wizard action to show the token
         return {
             'type': 'ir.actions.act_window',

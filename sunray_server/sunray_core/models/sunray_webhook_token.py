@@ -75,13 +75,13 @@ class SunrayWebhookToken(models.Model):
         new_token = self.generate_token()
         
         # Log token regeneration
-        self.env['sunray.audit.log'].create({
-            'event_type': 'webhook.regenerated',
-            'details': json.dumps({
+        self.env['sunray.audit.log'].create_admin_event(
+            event_type='webhook.regenerated',
+            details={
                 'token_name': self.name,
                 'host': self.host_id.domain
-            })
-        })
+            }
+        )
         
         self.token = new_token
         return new_token
@@ -161,13 +161,14 @@ class SunrayWebhookToken(models.Model):
         })
         
         # Log usage
-        self.env['sunray.audit.log'].create({
-            'event_type': 'webhook.used',
-            'ip_address': client_ip,
-            'details': json.dumps({
+        self.env['sunray.audit.log'].create_security_event(
+            event_type='webhook.used',
+            details={
                 'token_name': self.name,
                 'host': self.host_id.domain
-            })
-        })
+            },
+            ip_address=client_ip,
+            event_source='api'
+        )
         
         return True
