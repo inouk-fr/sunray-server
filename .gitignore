@@ -61,3 +61,5 @@ sunray_worker/wrangler-*.log
 # Local environment configuration
 .claude.local.md
 *.local.md
+
+test_logs/
