@@ -265,14 +265,13 @@ export async function handleAuth(request, env, ctx) {
     await env.SESSIONS.delete(pendingKey);
     console.log(`[auth/complete] Cleaned up pending session`);
     
-    // Prepare response headers
-    const headers = {
-      'Location': pending.redirectTo
-    };
+    // Create proper Headers object for Cloudflare Workers
+    const responseHeaders = new Headers();
+    responseHeaders.set('Location', pending.redirectTo);
     
     // Set cookies - handle both new format (multiple cookies) and old format (single cookie) for compatibility
     if (pending.cookies && Array.isArray(pending.cookies)) {
-      // New format: multiple cookies
+      // New format: multiple cookies - use Headers.append() for proper multiple Set-Cookie handling
       pending.cookies.forEach((cookie, index) => {
         console.log(`[auth/complete] Setting cookie ${index + 1}/${pending.cookies.length}:`);
         console.log(`[auth/complete] - Cookie ${index + 1} domain: ${cookie.match(/Domain=([^;]+)/)?.[1] || 'no domain'}`);
@@ -281,28 +280,19 @@ export async function handleAuth(request, env, ctx) {
         console.log(`[auth/complete] - Cookie ${index + 1} secure: ${cookie.includes('Secure')}`);
         console.log(`[auth/complete] - Cookie ${index + 1} samesite: ${cookie.match(/SameSite=([^;]+)/)?.[1] || 'none'}`);
         
-        if (index === 0) {
-          headers['Set-Cookie'] = cookie;
-        } else {
-          // For multiple Set-Cookie headers, we need to use an array or multiple header entries
-          // Cloudflare Workers handles this by allowing array values
-          if (Array.isArray(headers['Set-Cookie'])) {
-            headers['Set-Cookie'].push(cookie);
-          } else {
-            headers['Set-Cookie'] = [headers['Set-Cookie'], cookie];
-          }
-        }
+        // Use Headers.append() for multiple Set-Cookie headers
+        responseHeaders.append('Set-Cookie', cookie);
       });
       console.log(`[auth/complete] ✓ Redirecting to ${pending.redirectTo} with ${pending.cookies.length} cookies`);
     } else if (pending.cookie) {
       // Legacy format: single cookie (for backward compatibility)
-      headers['Set-Cookie'] = pending.cookie;
+      responseHeaders.append('Set-Cookie', pending.cookie);
       console.log(`[auth/complete] ✓ Redirecting to ${pending.redirectTo} with single session cookie`);
     }
     
     return new Response(null, {
       status: 302,
-      headers
+      headers: responseHeaders
     });
   }
   
