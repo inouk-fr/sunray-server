@@ -16,7 +16,6 @@ sunray-srvr-debug.log
 .ikb/buildit-requirements.pip
 
 pip_src/
-
 # customer addons
 customer_addons/
 
@@ -56,7 +55,8 @@ sunray_worker/coverage/
 sunray_worker/*.bak
 sunray_worker/.env
 sunray_worker/.env.local
-sunray_worker/wrangler-*.log
+sunray_worker/logs
+sunray_worker/*.log
 
 # Local environment configuration
 .claude.local.md
