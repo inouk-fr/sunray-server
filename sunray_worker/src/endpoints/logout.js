@@ -32,10 +32,10 @@ export async function handleLogout(request, env, ctx) {
   }
   
   // Clear both session and sublimation cookies
-  const sessionClearCookie = createLogoutCookie(env.RP_ID);
-  const sublimationClearCookie = createSublimationClearCookie(env.RP_ID);
+  const sessionClearCookie = createLogoutCookie(env.PROTECTED_DOMAIN);
+  const sublimationClearCookie = createSublimationClearCookie(env.PROTECTED_DOMAIN);
   
-  console.log(`[Logout] Clearing session and sublimation cookies for domain ${env.RP_ID}`);
+  console.log(`[Logout] Clearing session and sublimation cookies for domain ${env.PROTECTED_DOMAIN}`);
   
   // Redirect to return URL or home with both cookies cleared
   return Response.redirect(returnTo, 302, {

@@ -2,13 +2,13 @@
  * Setup page HTML template
  */
 
-export function getSetupHTML(rpName) {
+export function getSetupHTML() {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Setup - ${rpName}</title>
+    <title>Sunray Access Setup</title>
     <style>
         * {
             margin: 0;

@@ -208,8 +208,7 @@ preview_id = "YOUR_CHALLENGES_PREVIEW_ID"
 # Environment variables
 [vars]
 ADMIN_API_ENDPOINT = "https://sunray-server-dev-cyril.pack8s.com"  # Your Sunray Server
-RP_ID = "odoo18-cfed-test-g.pack8s.com"  # The protected domain
-RP_NAME = "Sunray Authentication"
+PROTECTED_DOMAIN = "odoo18-cfed-test-g.pack8s.com"  # The domain being protected (can be subdomain or root)
 CACHE_TTL = "300"
 SESSION_TTL = "86400"
 CHALLENGE_TTL = "300"
@@ -293,8 +292,7 @@ curl -I https://odoo18-cfed-test-g.pack8s.com/web
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `ADMIN_API_ENDPOINT` | Sunray Server URL | `https://sunray-server.example.com` |
-| `RP_ID` | Relying Party ID (domain) | `app.example.com` |
-| `RP_NAME` | Display name for auth | `My App Authentication` |
+| `PROTECTED_DOMAIN` | The domain being protected | `app.example.com` |
 | `CACHE_TTL` | Config cache TTL (seconds) | `300` |
 | `SESSION_TTL` | Session duration (seconds) | `86400` (24 hours) |
 | `CHALLENGE_TTL` | Auth challenge TTL (seconds) | `300` |
@@ -401,7 +399,7 @@ wrangler kv:key list --binding CONFIG_CACHE
 
 **Solution**:
 - Check session cookie domain/path settings
-- Verify RP_ID matches the domain
+- Verify PROTECTED_DOMAIN matches the domain
 - Check browser console for cookie errors
 
 #### Config Not Loading
@@ -463,7 +461,7 @@ curl -X POST https://protected.example.com/sunray-wrkr/v1/cache/invalidate \
 - [ ] KV namespaces created and IDs in wrangler.toml
 - [ ] Secrets configured (ADMIN_API_KEY, SESSION_SECRET)
 - [ ] Route pattern correctly targets protected domain(s)
-- [ ] RP_ID matches the protected domain
+- [ ] PROTECTED_DOMAIN matches the protected domain
 - [ ] ADMIN_API_ENDPOINT points to Sunray Server
 
 ### After Deployment

@@ -16,8 +16,8 @@ export async function validateSetupToken(username, token, clientIp, env) {
     // Add sha512: prefix to match server storage format
     const token_hash = `sha512:${hash}`;
     
-    // Get current host domain from environment (RP_ID is the domain we're protecting)
-    const hostDomain = env.RP_ID;
+    // Get current host domain from environment (PROTECTED_DOMAIN is the domain we're protecting)
+    const hostDomain = env.PROTECTED_DOMAIN;
     
     const response = await fetch(`${env.ADMIN_API_ENDPOINT}/sunray-srvr/v1/setup-tokens/validate`, {
       method: 'POST',

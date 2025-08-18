@@ -14,7 +14,7 @@ export async function handleAuth(request, env, ctx) {
   // GET /sunray-wrkr/v1/auth - Show login form
   if (request.method === 'GET' && path === '/sunray-wrkr/v1/auth') {
     const returnTo = url.searchParams.get('return_to') || '/';
-    const html = getAuthHTML(env.RP_NAME, returnTo);
+    const html = getAuthHTML('Sunray Access', returnTo);
     return new Response(html, {
       status: 200,
       headers: { 'Content-Type': 'text/html; charset=utf-8' }
@@ -80,7 +80,7 @@ export async function handleAuth(request, env, ctx) {
       success: true,
       options: {
         challenge,
-        rpId: env.RP_ID,
+        rpId: env.PROTECTED_DOMAIN,
         userVerification: 'required',
         timeout: 60000
       }
@@ -160,13 +160,17 @@ export async function handleAuth(request, env, ctx) {
     const sessionCookie = createSessionCookie(
       session.jwt,
       session.expiresAt,
-      env.RP_ID
+      env.PROTECTED_DOMAIN
     );
+    
+    console.log(`[WAF Bypass] Setting session cookie 1/1 with domain: ${env.PROTECTED_DOMAIN}`);
     
     // Check if WAF bypass is enabled for this host
     const config = await getConfig(env);
     const hostConfig = config?.hosts.find(h => h.domain === hostDomain);
     const cookies = [sessionCookie];
+    
+    console.log(`[WAF Bypass Check] Host: ${hostDomain}, Config found: ${!!hostConfig}, WAF bypass enabled: ${hostConfig?.bypass_waf_for_authenticated || false}`);
     
     if (hostConfig?.bypass_waf_for_authenticated) {
       try {
@@ -186,12 +190,18 @@ export async function handleAuth(request, env, ctx) {
         const sublimationCookie = createSublimationCookie(
           wafBypassValue,
           session.expiresAt,
-          env.RP_ID
+          env.PROTECTED_DOMAIN
         );
         
         cookies.push(sublimationCookie);
         
-        console.log(`[WAF Bypass] Created sublimation cookie for ${user.username} on ${hostDomain}`);
+        console.log(`[WAF Bypass] Setting WAF bypass cookie 2/2:`);
+        console.log(`[WAF Bypass] - Cookie domain: ${env.PROTECTED_DOMAIN}`);
+        console.log(`[WAF Bypass] - Cookie value length: ${wafBypassValue.length}`);
+        console.log(`[WAF Bypass] - Cookie value preview: ${wafBypassValue.substring(0, 20)}...`);
+        console.log(`[WAF Bypass] - Cookie full string length: ${sublimationCookie.length}`);
+        console.log(`[WAF Bypass] - Cookie expires: ${new Date(session.expiresAt).toISOString()}`);
+        console.log(`[WAF Bypass] - Total cookies to set: ${cookies.length}`);
       } catch (error) {
         console.error(`[WAF Bypass] Failed to create sublimation cookie: ${error.message}`);
         // Continue without WAF bypass cookie - session will still work
@@ -264,6 +274,13 @@ export async function handleAuth(request, env, ctx) {
     if (pending.cookies && Array.isArray(pending.cookies)) {
       // New format: multiple cookies
       pending.cookies.forEach((cookie, index) => {
+        console.log(`[auth/complete] Setting cookie ${index + 1}/${pending.cookies.length}:`);
+        console.log(`[auth/complete] - Cookie ${index + 1} domain: ${cookie.match(/Domain=([^;]+)/)?.[1] || 'no domain'}`);
+        console.log(`[auth/complete] - Cookie ${index + 1} name: ${cookie.split('=')[0]}`);
+        console.log(`[auth/complete] - Cookie ${index + 1} length: ${cookie.length}`);
+        console.log(`[auth/complete] - Cookie ${index + 1} secure: ${cookie.includes('Secure')}`);
+        console.log(`[auth/complete] - Cookie ${index + 1} samesite: ${cookie.match(/SameSite=([^;]+)/)?.[1] || 'none'}`);
+        
         if (index === 0) {
           headers['Set-Cookie'] = cookie;
         } else {

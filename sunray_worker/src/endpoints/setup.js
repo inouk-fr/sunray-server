@@ -11,7 +11,7 @@ export async function handleSetup(request, env, ctx) {
   
   // GET /sunray-wrkr/v1/setup - Show setup form
   if (request.method === 'GET' && path === '/sunray-wrkr/v1/setup') {
-    const html = getSetupHTML(env.RP_NAME);
+    const html = getSetupHTML();
     return new Response(html, {
       status: 200,
       headers: { 'Content-Type': 'text/html; charset=utf-8' }
@@ -83,8 +83,8 @@ export async function handleSetup(request, env, ctx) {
       options: {
         challenge,
         rp: {
-          name: env.RP_NAME,
-          id: env.RP_ID
+          name: 'Sunray Access',
+          id: env.PROTECTED_DOMAIN
         },
         user: {
           // user.id must be a base64url encoded string for the browser API

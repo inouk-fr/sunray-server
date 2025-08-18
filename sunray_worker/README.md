@@ -74,8 +74,7 @@ npm run deploy
 
 ### Configuration Variables
 - `ADMIN_API_ENDPOINT`: URL of the Sunray Server
-- `RP_ID`: Relying Party ID for WebAuthn (usually your domain)
-- `RP_NAME`: Display name for WebAuthn prompts
+- `PROTECTED_DOMAIN`: The domain being protected (can be subdomain or root)
 - `WORKER_ID`: Unique identifier for this worker instance
 - `SESSION_TTL`: Session lifetime in seconds (default: 86400)
 - `CHALLENGE_TTL`: Challenge lifetime in seconds (default: 300)

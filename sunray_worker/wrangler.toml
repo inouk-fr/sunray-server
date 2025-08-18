@@ -28,8 +28,7 @@ preview_id = "a12b6c925fb043f6a2e1184c6a4c6e75"
 # Environment variables (will be set via wrangler secret)
 [vars]
 ADMIN_API_ENDPOINT = "https://sunray-server-dev-cyril.pack8s.com"
-RP_ID = "odoo18-cfed-test-g.pack8s.com"  # The domain being protected
-RP_NAME = "Sunray Authentication"
+PROTECTED_DOMAIN = "odoo18-cfed-test-g.pack8s.com"  # The domain being protected (can be subdomain or root)
 CACHE_TTL = "300"
 SESSION_TTL = "86400"
 CHALLENGE_TTL = "300"

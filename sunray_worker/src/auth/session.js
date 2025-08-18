@@ -273,23 +273,57 @@ export async function createWAFBypassCookie(sessionId, clientIP, userAgent, env)
   const secret = env.WAF_BYPASS_SECRET || env.SESSION_SECRET || 'default-secret-change-me';
   const timestamp = Math.floor(Date.now() / 1000);
   
+  console.log(`[createWAFBypassCookie] Starting cookie creation:`, {
+    sessionIdLength: sessionId.length,
+    sessionIdPreview: sessionId.substring(0, 8) + '...',
+    clientIP,
+    userAgentLength: userAgent.length,
+    userAgentPreview: userAgent.substring(0, 50) + '...',
+    timestamp,
+    secretSource: env.WAF_BYPASS_SECRET ? 'WAF_BYPASS_SECRET' : (env.SESSION_SECRET ? 'SESSION_SECRET' : 'default')
+  });
+  
   try {
     // Create hashes (first 8 chars for brevity)
     const sessionHash = await hashPrefix(sessionId, 8);
     const ipHash = await hashPrefix(clientIP, 8);
     const uaHash = await hashPrefix(userAgent, 8);
     
+    console.log(`[createWAFBypassCookie] Generated hashes:`, {
+      sessionHash,
+      ipHash,
+      uaHash,
+      timestamp
+    });
+    
     // Create HMAC
     const data = `${sessionHash}:${ipHash}:${uaHash}:${timestamp}`;
     const hmac = await createHMAC(data, secret);
     
+    console.log(`[createWAFBypassCookie] HMAC data and result:`, {
+      dataString: data,
+      hmacLength: hmac.length,
+      hmacPreview: hmac.substring(0, 16) + '...'
+    });
+    
     // Combine and encode
     const cookieValue = btoa(`${data}:${hmac}`);
+    
+    console.log(`[createWAFBypassCookie] Final cookie value:`, {
+      cookieValueLength: cookieValue.length,
+      cookieValuePreview: cookieValue.substring(0, 30) + '...'
+    });
     
     logger.info(`[WAF Bypass] Created sublimation cookie for session ${sessionId} from IP ${clientIP}`);
     
     return cookieValue;
   } catch (error) {
+    console.error(`[createWAFBypassCookie] Error creating cookie:`, {
+      errorMessage: error.message,
+      errorStack: error.stack,
+      sessionId: sessionId.substring(0, 8) + '...',
+      clientIP
+    });
     logger.error(`[WAF Bypass] Error creating cookie: ${error.message}`);
     throw error;
   }
@@ -389,14 +423,30 @@ export function createSublimationCookie(value, expiresAt, domain) {
   const expires = new Date(expiresAt).toUTCString();
   const secure = domain !== 'localhost';
   
-  return [
+  const cookieParts = [
     `sunray_sublimation=${value}`,
     `Domain=${domain}`,
     `Path=/`,
     `Expires=${expires}`,
     secure ? 'Secure' : '',
     'SameSite=Lax'
-  ].filter(Boolean).join('; ');
+  ].filter(Boolean);
+  
+  const cookie = cookieParts.join('; ');
+  
+  console.log(`[createSublimationCookie] Creating WAF bypass cookie:`, {
+    domain,
+    expires,
+    secure,
+    valueLength: value.length,
+    cookieLength: cookie.length,
+    hasHttpOnly: cookie.includes('HttpOnly'),
+    cookieName: 'sunray_sublimation',
+    valuePreview: value.substring(0, 20) + '...',
+    cookiePreview: cookie.substring(0, 100) + '...'
+  });
+  
+  return cookie;
 }
 
 /**
