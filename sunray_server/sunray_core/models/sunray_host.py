@@ -45,20 +45,6 @@ class SunrayHost(models.Model):
         string='Access Rules'
     )
     
-    # Legacy fields (for backward compatibility during transition)
-    # TODO: Remove after full migration to Access Rules
-    allowed_cidrs = fields.Text(
-        string='Allowed CIDR Blocks (DEPRECATED)', 
-        help='DEPRECATED: Use Access Rules instead. IP addresses or CIDR blocks that bypass all authentication (one per line, # for comments)\nExamples: 192.168.1.100 or 192.168.1.100/32 or 192.168.1.0/24'
-    )
-    public_url_patterns = fields.Text(
-        string='Public URL Patterns (DEPRECATED)', 
-        help='DEPRECATED: Use Access Rules instead. URL patterns that allow unrestricted public access (one per line, # for comments)'
-    )
-    token_url_patterns = fields.Text(
-        string='Token-Protected URL Patterns (DEPRECATED)', 
-        help='DEPRECATED: Use Access Rules instead. URL patterns that accept token authentication (one per line, # for comments)'
-    )
     
     # Webhook Authentication
     webhook_token_ids = fields.One2many(
@@ -153,65 +139,6 @@ class SunrayHost(models.Model):
                 result.append(line)
         return result
     
-    def get_allowed_cidrs(self, format='json'):
-        """Parse allowed CIDR blocks from line-separated format
-        
-        Args:
-            format: Output format ('json' returns list, future: 'txt', 'yaml')
-            
-        Returns:
-            Parsed data in requested format
-        """
-        if format == 'json':
-            return self._parse_line_separated_field(self.allowed_cidrs)
-        elif format == 'txt':
-            # Future: return clean text without comments
-            raise NotImplementedError(f"Format '{format}' not yet implemented")
-        elif format == 'yaml':
-            # Future: return YAML formatted data
-            raise NotImplementedError(f"Format '{format}' not yet implemented")
-        else:
-            raise ValueError(f"Unsupported format: {format}")
-    
-    def get_public_url_patterns(self, format='json'):
-        """Parse public URL patterns from line-separated format
-        
-        Args:
-            format: Output format ('json' returns list, future: 'txt', 'yaml')
-            
-        Returns:
-            Parsed data in requested format
-        """  
-        if format == 'json':
-            return self._parse_line_separated_field(self.public_url_patterns)
-        elif format == 'txt':
-            # Future: return clean text without comments
-            raise NotImplementedError(f"Format '{format}' not yet implemented")
-        elif format == 'yaml':
-            # Future: return YAML formatted data
-            raise NotImplementedError(f"Format '{format}' not yet implemented")
-        else:
-            raise ValueError(f"Unsupported format: {format}")
-    
-    def get_token_url_patterns(self, format='json'):
-        """Parse token URL patterns from line-separated format
-        
-        Args:
-            format: Output format ('json' returns list, future: 'txt', 'yaml')
-            
-        Returns:
-            Parsed data in requested format
-        """
-        if format == 'json':
-            return self._parse_line_separated_field(self.token_url_patterns)
-        elif format == 'txt':
-            # Future: return clean text without comments
-            raise NotImplementedError(f"Format '{format}' not yet implemented")
-        elif format == 'yaml':
-            # Future: return YAML formatted data
-            raise NotImplementedError(f"Format '{format}' not yet implemented")
-        else:
-            raise ValueError(f"Unsupported format: {format}")
     
     def get_exceptions_tree(self):
         """Generate exceptions tree for Worker using Access Rules
@@ -221,93 +148,9 @@ class SunrayHost(models.Model):
         """
         self.ensure_one()
         
-        # Use new Access Rules if available
-        if self.access_rule_ids:
-            return self.env['sunray.access.rule'].generate_exceptions_tree(self.id)
-        
-        # Fallback to legacy fields for backward compatibility
-        exceptions = []
-        priority = 100
-        
-        # Legacy CIDR rules
-        cidrs = self.get_allowed_cidrs()
-        if cidrs:
-            exceptions.append({
-                'priority': priority,
-                'access_type': 'cidr',
-                'url_patterns': ['.*'],  # Apply to all URLs
-                'allowed_cidrs': cidrs,
-                'description': 'Legacy CIDR access'
-            })
-            priority += 100
-        
-        # Legacy public URL rules
-        public_patterns = self.get_public_url_patterns()
-        if public_patterns:
-            exceptions.append({
-                'priority': priority,
-                'access_type': 'public',
-                'url_patterns': public_patterns,
-                'description': 'Legacy public URLs'
-            })
-            priority += 100
-        
-        # Legacy token URL rules
-        token_patterns = self.get_token_url_patterns()
-        if token_patterns:
-            # Get active webhook tokens for this host
-            tokens = []
-            for token in self.webhook_token_ids.filtered('is_active'):
-                if token.is_valid():
-                    tokens.append(token.get_extraction_config())
-            
-            if tokens:
-                exceptions.append({
-                    'priority': priority,
-                    'access_type': 'token',
-                    'url_patterns': token_patterns,
-                    'tokens': tokens,
-                    'description': 'Legacy token URLs'
-                })
-        
-        return exceptions
+        # Use Access Rules system
+        return self.env['sunray.access.rule'].generate_exceptions_tree(self.id)
     
-    def check_access_requirements(self, client_ip, url_path):
-        """
-        DEPRECATED: Use get_exceptions_tree() instead
-        
-        Determine access requirements for a request
-        Security-first approach: Everything locked by default
-        
-        Returns:
-        - 'cidr_allowed': IP is in allowed CIDR, bypass all auth
-        - 'public': URL matches public pattern, no auth required  
-        - 'token': URL matches token pattern, token auth required
-        - 'passkey': Default - passkey authentication required
-        """
-        # 1. Check CIDR exceptions first (highest priority)
-        if client_ip:
-            try:
-                client = ipaddress.ip_address(client_ip)
-                for cidr_str in self.get_allowed_cidrs():
-                    if client in ipaddress.ip_network(cidr_str, strict=False):
-                        return 'cidr_allowed'
-            except (ValueError, ipaddress.AddressValueError):
-                # Invalid IP format, continue with other checks
-                pass
-        
-        # 2. Check public URL exceptions
-        for pattern in self.get_public_url_patterns():
-            if re.match(pattern, url_path):
-                return 'public'
-        
-        # 3. Check token URL exceptions  
-        for pattern in self.get_token_url_patterns():
-            if re.match(pattern, url_path):
-                return 'token'
-        
-        # 4. Default: Require passkey authentication
-        return 'passkey'
     
     def write(self, vals):
         """Override to update config_version on any change"""

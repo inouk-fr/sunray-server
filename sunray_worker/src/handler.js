@@ -93,43 +93,6 @@ export async function handleRequest(request, env, ctx) {
     logger.debug(`[Access Rules] No exceptions granted access`);
   }
   
-  // Fallback to legacy approach for backward compatibility
-  else {
-    logger.debug(`[Legacy Access] Using legacy access control methods`);
-    
-    // 1. Check CIDR bypass (office networks, single IPs with /32, etc.)
-    if (hostConfig.allowed_cidrs && hostConfig.allowed_cidrs.length > 0) {
-      for (const cidr of hostConfig.allowed_cidrs) {
-        if (checkCIDRBypass(clientIP, cidr)) {
-          logger.info(`[Legacy] CIDR bypass granted for ${clientIP} matching ${cidr}`);
-          return fetch(request);  // Pass through to origin
-        }
-      }
-    }
-    
-    // 2. Check public URL patterns
-    if (hostConfig.public_url_patterns && hostConfig.public_url_patterns.length > 0) {
-      for (const pattern of hostConfig.public_url_patterns) {
-        if (checkPublicURL(url.pathname, pattern)) {
-          logger.info(`[Legacy] Public URL access granted for ${url.pathname}`);
-          return fetch(request);  // Pass through to origin
-        }
-      }
-    }
-    
-    // 3. Check token authentication for webhooks
-    if (hostConfig.token_url_patterns && hostConfig.token_url_patterns.length > 0) {
-      for (const pattern of hostConfig.token_url_patterns) {
-        if (checkTokenURL(url.pathname, pattern)) {
-          const validatedToken = extractAndValidateTokens(request, hostConfig, logger);
-          if (validatedToken) {
-            logger.info(`[Legacy] Token auth granted for ${url.pathname} using token '${validatedToken.name}'`);
-            return fetch(request);  // Pass through to origin
-          }
-        }
-      }
-    }
-  }
   
   // 4. Check session authentication
   logger.debug(`[Session Check] Looking for session cookie on ${hostname}`);

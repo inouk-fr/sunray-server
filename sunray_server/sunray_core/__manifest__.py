@@ -62,12 +62,12 @@ Technical Components:
     'external_dependencies': {
         'python': ['pyotp', 'qrcode', 'python-jose', 'PyYAML'],
     },
-    'assets': {
-        'web.assets_backend': [
-            'sunray_core/static/src/css/sunray.css',
-            'sunray_core/static/src/js/sunray.js',
-        ],
-    },
+    # 'assets': {
+    #     'web.assets_backend': [
+    #         'sunray_core/static/src/css/sunray.css',
+    #         'sunray_core/static/src/js/sunray.js',
+    #     ],
+    # },
     'cli': {
         'sunray_core.cli.sunray_cli': ['sunray'],
     },

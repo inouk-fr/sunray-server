@@ -109,37 +109,7 @@
                                 <p>The first matching rule determines access type. If no rule matches, passkey authentication is required.</p>
                             </div>
                         </page>
-                        
-                        <page string="Legacy Access Control (DEPRECATED)" groups="base.group_system">
-                            <div class="alert alert-warning" role="alert">
-                                <strong>DEPRECATED:</strong> These fields are deprecated. Please use Access Rules instead.
-                                These fields will be removed in a future version.
-                            </div>
-                            <group>
-                                <field name="allowed_cidrs" widget="text" placeholder="IP addresses or CIDR ranges for bypass&#10;Examples:&#10;192.168.1.100&#10;192.168.1.100/32&#10;10.0.0.0/8&#10;192.168.0.0/16"/>
-                                <field name="public_url_patterns" widget="text" placeholder="Regex patterns for public URLs&#10;Example:&#10;^/api/webhook&#10;^/public/.*&#10;^/health$"/>
-                                <field name="token_url_patterns" widget="text" placeholder="Regex patterns for token auth URLs&#10;Example:&#10;^/api/.*&#10;^/webhook/.*"/>
-                            </group>
-                        </page>
-                        
-                        <page string="Configuration">
-                            <group string="Session Settings">
-                                <field name="session_duration_s"/>
-                            </group>
-                            
-                            <group string="WAF Integration">
-                                <field name="bypass_waf_for_authenticated"/>
-                                <field name="waf_bypass_revalidation_minutes" invisible="not bypass_waf_for_authenticated"/>
-                            </group>
-                            
-                            <group string="Webhook Settings (Deprecated)">
-                                <field name="webhook_header_name" 
-                                       help="Default header name - configure per-token instead"/>
-                                <field name="webhook_param_name" 
-                                       help="Default parameter name - configure per-token instead"/>
-                            </group>
-                        </page>
-                        
+                                                
                         <page string="Authorized Users">
                             <field name="user_ids" />
                         </page>
@@ -198,6 +168,25 @@
                                 <p><strong>Note:</strong> Create tokens here, then reference them in Access Rules to define which URLs they can access.</p>
                             </div>
                         </page>
+
+                        <page string="Configuration">
+                            <group string="Session Settings">
+                                <field name="session_duration_s"/>
+                            </group>
+                            
+                            <group string="WAF Integration">
+                                <field name="bypass_waf_for_authenticated"/>
+                                <field name="waf_bypass_revalidation_minutes" invisible="not bypass_waf_for_authenticated"/>
+                            </group>
+                            
+                            <group string="Webhook Settings (Deprecated)">
+                                <field name="webhook_header_name" 
+                                       help="Default header name - configure per-token instead"/>
+                                <field name="webhook_param_name" 
+                                       help="Default parameter name - configure per-token instead"/>
+                            </group>
+                        </page>
+                        
                     </notebook>
                 </sheet>
             </form>

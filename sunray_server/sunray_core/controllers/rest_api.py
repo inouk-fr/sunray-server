@@ -222,10 +222,6 @@ class SunrayRESTController(http.Controller):
                 'bypass_waf_for_authenticated': host_obj.bypass_waf_for_authenticated,
                 'waf_bypass_revalidation_minutes': host_obj.waf_bypass_revalidation_minutes or 15,
                 
-                # Legacy fields (deprecated - kept for backward compatibility)
-                'allowed_cidrs': host_obj.get_allowed_cidrs(),
-                'public_url_patterns': host_obj.get_public_url_patterns(),
-                'token_url_patterns': host_obj.get_token_url_patterns(),
                 'webhook_header_name': host_obj.webhook_header_name,
                 'webhook_param_name': host_obj.webhook_param_name,
                 'webhook_tokens': []

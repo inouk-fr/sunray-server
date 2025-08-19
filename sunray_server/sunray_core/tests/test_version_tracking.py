@@ -53,7 +53,7 @@ class TestVersionTracking(TransactionCase):
         time.sleep(1)
         
         # Modify host
-        self.test_host.write({'allowed_cidrs': '10.0.0.0/8'})
+        self.test_host.write({'session_duration_s': 7200})
         updated_version = self.test_host.config_version
         
         self.assertGreater(updated_version, initial_version,

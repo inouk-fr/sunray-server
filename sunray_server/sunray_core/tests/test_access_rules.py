@@ -347,40 +347,6 @@ class TestAccessRules(TransactionCase):
         self.assertEqual(tree[1]['priority'], 200)
         self.assertEqual(tree[1]['access_type'], 'public')
     
-    def test_legacy_fallback(self):
-        """Test that hosts without access rules fall back to legacy fields"""
-        
-        # Create host with legacy fields
-        legacy_host = self.env['sunray.host'].create({
-            'domain': 'legacy.example.com',
-            'worker_url': 'https://worker.example.com',
-            'backend_url': 'https://backend.example.com',
-            'is_active': True,
-            'allowed_cidrs': '192.168.1.0/24\n10.0.0.0/8',
-            'public_url_patterns': '^/health$\n^/status$',
-            'token_url_patterns': '^/api/.*\n^/webhook/.*'
-        })
-        
-        # Add legacy webhook token
-        legacy_token = self.env['sunray.webhook.token'].create({
-            'host_id': legacy_host.id,
-            'name': 'Legacy Token',
-            'token': 'legacy_123',
-            'header_name': 'X-Legacy-Token',
-            'token_source': 'header'
-        })
-        
-        # Get exceptions tree (should use legacy fallback)
-        tree = legacy_host.get_exceptions_tree()
-        
-        # Should create legacy exceptions
-        self.assertTrue(len(tree) > 0)
-        
-        # Check that it includes legacy patterns
-        descriptions = [rule['description'] for rule in tree]
-        self.assertIn('Legacy CIDR access', descriptions)
-        self.assertIn('Legacy public URLs', descriptions)
-        self.assertIn('Legacy token URLs', descriptions)
     
     def test_token_filtering_in_worker_config(self):
         """Test that only active and valid tokens are included in worker config"""

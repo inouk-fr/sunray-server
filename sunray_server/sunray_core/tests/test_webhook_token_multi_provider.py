@@ -14,8 +14,7 @@ class TestWebhookTokenMultiProvider(TransactionCase):
             'domain': 'api.example.com',
             'worker_url': 'https://worker.example.com',
             'backend_url': 'https://backend.example.com',
-            'is_active': True,
-            'token_url_patterns': '^/api/.*\n^/webhook/.*'
+            'is_active': True
         })
         
         # Create API key for worker authentication
