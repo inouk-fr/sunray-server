@@ -42,6 +42,7 @@ Technical Components:
         # Views (actions must be defined before menu)
         'views/sunray_user_views.xml',
         'views/sunray_host_views.xml',
+        'views/sunray_access_rule_views.xml',
         'views/sunray_session_views.xml',
         'views/sunray_audit_log_views.xml',
         'views/sunray_api_key_views.xml',
@@ -59,7 +60,7 @@ Technical Components:
     'application': True,
     'auto_install': False,
     'external_dependencies': {
-        'python': ['pyotp', 'qrcode', 'jose', 'PyYAML'],
+        'python': ['pyotp', 'qrcode', 'python-jose', 'PyYAML'],
     },
     'assets': {
         'web.assets_backend': [

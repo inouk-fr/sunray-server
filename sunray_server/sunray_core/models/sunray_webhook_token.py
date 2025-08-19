@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from odoo import models, fields, api
+from odoo.exceptions import ValidationError
 import json
 import secrets
 import string
@@ -7,7 +8,7 @@ import string
 
 class SunrayWebhookToken(models.Model):
     _name = 'sunray.webhook.token'
-    _description = 'Webhook Authentication Token'
+    _description = 'API and Webhook Authentication Token'
     _rec_name = 'name'
     _order = 'name'
     
@@ -20,13 +21,13 @@ class SunrayWebhookToken(models.Model):
     name = fields.Char(
         string='Token Name', 
         required=True,
-        help='Descriptive name for this token'
+        help='Descriptive name for this token (e.g., "Shopify Webhook", "Payment API", "CI/CD Pipeline")'
     )
     token = fields.Char(
         string='Token Value', 
         required=True, 
         index=True,
-        help='The actual token value'
+        help='The actual token value for API and webhook authentication'
     )
     is_active = fields.Boolean(
         string='Active', 
@@ -56,18 +57,18 @@ class SunrayWebhookToken(models.Model):
     # Token extraction configuration
     header_name = fields.Char(
         string='Header Name',
-        help='HTTP header name for this token (e.g., X-Shopify-Hmac-Sha256, Authorization)'
+        help='HTTP header name for API/webhook token extraction (e.g., X-Shopify-Hmac-Sha256, Authorization, X-API-Key)'
     )
     param_name = fields.Char(
         string='Parameter Name',
-        help='URL parameter name for this token (e.g., api_key, token)'
+        help='URL parameter name for API/webhook token extraction (e.g., api_key, token, key)'
     )
     token_source = fields.Selection([
         ('header', 'HTTP Header Only'),
         ('param', 'URL Parameter Only'),
         ('both', 'Both (Header First)')
     ], string='Token Source', default='header',
-       help='Where to extract the token from')
+       help='Where to extract the API/webhook token from')
     
     _sql_constraints = [
         ('token_unique', 'UNIQUE(token)', 'Token must be unique!'),
@@ -77,6 +78,17 @@ class SunrayWebhookToken(models.Model):
          "(token_source = 'both' AND (header_name IS NOT NULL OR param_name IS NOT NULL)))",
          'Header name required for header source, parameter name required for param source!')
     ]
+    
+    @api.constrains('token_source', 'header_name', 'param_name')
+    def _check_token_source_configuration(self):
+        """Validate token source configuration"""
+        for record in self:
+            if record.token_source == 'header' and not record.header_name:
+                raise ValidationError('Header name is required when token source is "header"')
+            elif record.token_source == 'param' and not record.param_name:
+                raise ValidationError('Parameter name is required when token source is "param"')
+            elif record.token_source == 'both' and not record.header_name and not record.param_name:
+                raise ValidationError('At least one of header name or parameter name is required when token source is "both"')
     
     def create(self, vals_list):
         """Override create to auto-generate token if not provided"""
@@ -189,13 +201,13 @@ class SunrayWebhookToken(models.Model):
                 'host': self.host_id.domain
             },
             ip_address=client_ip,
-            event_source='api'
+            event_source='api_webhook'
         )
         
         return True
     
     def get_extraction_config(self):
-        """Get token extraction configuration for worker"""
+        """Get API/webhook token extraction configuration for worker"""
         self.ensure_one()
         return {
             'token': self.token,
@@ -204,5 +216,6 @@ class SunrayWebhookToken(models.Model):
             'param_name': self.param_name,
             'token_source': self.token_source,
             'allowed_cidrs': self.get_allowed_cidrs(),
-            'expires_at': self.expires_at.isoformat() if self.expires_at else None
+            'expires_at': self.expires_at.isoformat() if self.expires_at else None,
+            'is_active': self.is_active
         }

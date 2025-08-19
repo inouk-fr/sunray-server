@@ -38,25 +38,26 @@ class SunrayHost(models.Model):
         help='When disabled, host becomes publicly accessible through Worker route (no authentication required)'
     )
     
-    # Security Exceptions (whitelist approach)
-    # Default: Everything requires passkey authentication
+    # Access Rules (new unified approach)
+    access_rule_ids = fields.One2many(
+        'sunray.access.rule',
+        'host_id', 
+        string='Access Rules'
+    )
     
-    # CIDR-based exceptions (bypass all authentication)
+    # Legacy fields (for backward compatibility during transition)
+    # TODO: Remove after full migration to Access Rules
     allowed_cidrs = fields.Text(
-        string='Allowed CIDR Blocks', 
-        help='IP addresses or CIDR blocks that bypass all authentication (one per line, # for comments)\nExamples: 192.168.1.100 or 192.168.1.100/32 or 192.168.1.0/24'
+        string='Allowed CIDR Blocks (DEPRECATED)', 
+        help='DEPRECATED: Use Access Rules instead. IP addresses or CIDR blocks that bypass all authentication (one per line, # for comments)\nExamples: 192.168.1.100 or 192.168.1.100/32 or 192.168.1.0/24'
     )
-    
-    # URL-based public exceptions  
     public_url_patterns = fields.Text(
-        string='Public URL Patterns', 
-        help='URL patterns that allow unrestricted public access (one per line, # for comments)'
+        string='Public URL Patterns (DEPRECATED)', 
+        help='DEPRECATED: Use Access Rules instead. URL patterns that allow unrestricted public access (one per line, # for comments)'
     )
-    
-    # URL-based token exceptions
     token_url_patterns = fields.Text(
-        string='Token-Protected URL Patterns', 
-        help='URL patterns that accept token authentication (one per line, # for comments)'
+        string='Token-Protected URL Patterns (DEPRECATED)', 
+        help='DEPRECATED: Use Access Rules instead. URL patterns that accept token authentication (one per line, # for comments)'
     )
     
     # Webhook Authentication
@@ -212,8 +213,69 @@ class SunrayHost(models.Model):
         else:
             raise ValueError(f"Unsupported format: {format}")
     
+    def get_exceptions_tree(self):
+        """Generate exceptions tree for Worker using Access Rules
+        
+        Returns:
+            list: Ordered list of access exceptions for worker evaluation
+        """
+        self.ensure_one()
+        
+        # Use new Access Rules if available
+        if self.access_rule_ids:
+            return self.env['sunray.access.rule'].generate_exceptions_tree(self.id)
+        
+        # Fallback to legacy fields for backward compatibility
+        exceptions = []
+        priority = 100
+        
+        # Legacy CIDR rules
+        cidrs = self.get_allowed_cidrs()
+        if cidrs:
+            exceptions.append({
+                'priority': priority,
+                'access_type': 'cidr',
+                'url_patterns': ['.*'],  # Apply to all URLs
+                'allowed_cidrs': cidrs,
+                'description': 'Legacy CIDR access'
+            })
+            priority += 100
+        
+        # Legacy public URL rules
+        public_patterns = self.get_public_url_patterns()
+        if public_patterns:
+            exceptions.append({
+                'priority': priority,
+                'access_type': 'public',
+                'url_patterns': public_patterns,
+                'description': 'Legacy public URLs'
+            })
+            priority += 100
+        
+        # Legacy token URL rules
+        token_patterns = self.get_token_url_patterns()
+        if token_patterns:
+            # Get active webhook tokens for this host
+            tokens = []
+            for token in self.webhook_token_ids.filtered('is_active'):
+                if token.is_valid():
+                    tokens.append(token.get_extraction_config())
+            
+            if tokens:
+                exceptions.append({
+                    'priority': priority,
+                    'access_type': 'token',
+                    'url_patterns': token_patterns,
+                    'tokens': tokens,
+                    'description': 'Legacy token URLs'
+                })
+        
+        return exceptions
+    
     def check_access_requirements(self, client_ip, url_path):
         """
+        DEPRECATED: Use get_exceptions_tree() instead
+        
         Determine access requirements for a request
         Security-first approach: Everything locked by default
         

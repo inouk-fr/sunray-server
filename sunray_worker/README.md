@@ -6,9 +6,11 @@ Cloudflare Worker for Sunray authentication system using WebAuthn/Passkeys.
 
 - WebAuthn/Passkey authentication
 - JWT-based session management
+- **NEW: Unified Access Rules system**
+- Priority-based access control
 - CIDR-based IP whitelisting
 - Public URL pattern matching
-- Webhook token authentication
+- API and webhook token authentication
 - CSRF protection
 - Device fingerprinting
 
@@ -106,11 +108,19 @@ Terminate session and clear cookies.
 
 ### Protected Resources
 
-All other URLs are protected and require:
+**NEW Access Rules System (Config API v4+):**
+All URLs are protected by default and evaluated against Access Rules in priority order:
+1. **Public Access**: No authentication required
+2. **CIDR Access**: IP address whitelist bypass
+3. **Token Access**: API/webhook token authentication
+4. **Default**: Passkey authentication required (if no rules match)
+
+**Legacy Support (Config API v3):**
+Falls back to separate field evaluation:
 1. Valid session cookie, OR
 2. IP address in CIDR whitelist, OR
 3. URL matching public patterns, OR
-4. Valid webhook token
+4. Valid API/webhook token
 
 ## Development
 
@@ -151,11 +161,19 @@ wrangler kv:key list --namespace-id=<namespace-id>
 ## Integration with Sunray Server
 
 The Worker communicates with Sunray Server (Odoo) for:
-- Configuration synchronization
-- Token validation
-- Passkey registration
-- Session reporting
-- Audit logging
+- **Configuration synchronization** (includes new Access Rules)
+- **Exceptions tree processing** (unified access control)
+- Token validation and tracking
+- Passkey registration and verification
+- Session creation and management
+- Comprehensive audit logging
+- WAF bypass cookie management
+
+### Configuration API Versions
+
+- **v4**: Access Rules system with exceptions tree
+- **v3**: Legacy field-based configuration (deprecated)
+- **v2 and below**: No longer supported
 
 ## Troubleshooting
 

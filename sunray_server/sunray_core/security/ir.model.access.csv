@@ -27,6 +27,10 @@ access_sunray_api_key_user,sunray.api.key user,model_sunray_api_key,group_sunray
 access_sunray_api_key_manager,sunray.api.key manager,model_sunray_api_key,group_sunray_manager,1,1,1,0
 access_sunray_api_key_admin,sunray.api.key admin,model_sunray_api_key,group_sunray_admin,1,1,1,1
 
+access_sunray_access_rule_user,sunray.access.rule user,model_sunray_access_rule,group_sunray_user,1,0,0,0
+access_sunray_access_rule_manager,sunray.access.rule manager,model_sunray_access_rule,group_sunray_manager,1,1,1,0
+access_sunray_access_rule_admin,sunray.access.rule admin,model_sunray_access_rule,group_sunray_admin,1,1,1,1
+
 access_sunray_audit_log_user,sunray.audit.log user,model_sunray_audit_log,group_sunray_user,1,0,0,0
 access_sunray_audit_log_manager,sunray.audit.log manager,model_sunray_audit_log,group_sunray_manager,1,0,0,0
 access_sunray_audit_log_admin,sunray.audit.log admin,model_sunray_audit_log,group_sunray_admin,1,1,1,1

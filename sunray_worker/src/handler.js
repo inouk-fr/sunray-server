@@ -31,36 +31,101 @@ export async function handleRequest(request, env, ctx) {
     return fetch(request);
   }
   
-  // Check bypass conditions in order
+  // Check access exceptions using new unified approach
   
-  // 1. Check CIDR bypass (office networks, single IPs with /32, etc.)
-  if (hostConfig.allowed_cidrs && hostConfig.allowed_cidrs.length > 0) {
-    for (const cidr of hostConfig.allowed_cidrs) {
-      if (checkCIDRBypass(clientIP, cidr)) {
-        logger.info(`CIDR bypass granted for ${clientIP} matching ${cidr}`);
-        return fetch(request);  // Pass through to origin
+  // Use exceptions tree if available (new Access Rules system)
+  if (hostConfig.exceptions_tree && hostConfig.exceptions_tree.length > 0) {
+    logger.debug(`[Access Rules] Evaluating ${hostConfig.exceptions_tree.length} exceptions`);
+    
+    for (const exception of hostConfig.exceptions_tree) {
+      logger.debug(`[Access Rules] Checking rule: ${exception.description} (priority: ${exception.priority})`);
+      
+      // Check if URL matches any pattern in this rule
+      let urlMatches = false;
+      for (const pattern of exception.url_patterns) {
+        if (checkPublicURL(url.pathname, pattern)) {
+          urlMatches = true;
+          logger.debug(`[Access Rules] URL ${url.pathname} matches pattern: ${pattern}`);
+          break;
+        }
       }
+      
+      if (!urlMatches) {
+        logger.debug(`[Access Rules] URL ${url.pathname} does not match any pattern in rule`);
+        continue;
+      }
+      
+      // URL matches, now check access type
+      if (exception.access_type === 'public') {
+        logger.info(`[Access Rules] Public access granted for ${url.pathname} (rule: ${exception.description})`);
+        return fetch(request);
+      }
+      
+      else if (exception.access_type === 'cidr') {
+        // Check CIDR restrictions
+        if (exception.allowed_cidrs && exception.allowed_cidrs.length > 0) {
+          for (const cidr of exception.allowed_cidrs) {
+            if (checkCIDRBypass(clientIP, cidr)) {
+              logger.info(`[Access Rules] CIDR access granted for ${clientIP} matching ${cidr} (rule: ${exception.description})`);
+              return fetch(request);
+            }
+          }
+          logger.debug(`[Access Rules] CIDR check failed for ${clientIP}`);
+        }
+      }
+      
+      else if (exception.access_type === 'token') {
+        // Check token authentication
+        if (exception.tokens && exception.tokens.length > 0) {
+          const validatedToken = extractAndValidateTokensByConfig(request, exception.tokens, logger);
+          if (validatedToken) {
+            logger.info(`[Access Rules] Token access granted for ${url.pathname} using token '${validatedToken.name}' (rule: ${exception.description})`);
+            return fetch(request);
+          }
+        }
+        logger.debug(`[Access Rules] Token check failed`);
+      }
+      
+      // First matching URL pattern didn't grant access, continue to next rule
+      logger.debug(`[Access Rules] Rule matched URL but access denied`);
     }
+    
+    logger.debug(`[Access Rules] No exceptions granted access`);
   }
   
-  // 2. Check public URL patterns
-  if (hostConfig.public_url_patterns && hostConfig.public_url_patterns.length > 0) {
-    for (const pattern of hostConfig.public_url_patterns) {
-      if (checkPublicURL(url.pathname, pattern)) {
-        logger.info(`Public URL access granted for ${url.pathname}`);
-        return fetch(request);  // Pass through to origin
-      }
-    }
-  }
-  
-  // 3. Check token authentication for webhooks
-  if (hostConfig.token_url_patterns && hostConfig.token_url_patterns.length > 0) {
-    for (const pattern of hostConfig.token_url_patterns) {
-      if (checkTokenURL(url.pathname, pattern)) {
-        const validatedToken = extractAndValidateTokens(request, hostConfig, logger);
-        if (validatedToken) {
-          logger.info(`Token auth granted for ${url.pathname} using token '${validatedToken.name}'`);
+  // Fallback to legacy approach for backward compatibility
+  else {
+    logger.debug(`[Legacy Access] Using legacy access control methods`);
+    
+    // 1. Check CIDR bypass (office networks, single IPs with /32, etc.)
+    if (hostConfig.allowed_cidrs && hostConfig.allowed_cidrs.length > 0) {
+      for (const cidr of hostConfig.allowed_cidrs) {
+        if (checkCIDRBypass(clientIP, cidr)) {
+          logger.info(`[Legacy] CIDR bypass granted for ${clientIP} matching ${cidr}`);
           return fetch(request);  // Pass through to origin
+        }
+      }
+    }
+    
+    // 2. Check public URL patterns
+    if (hostConfig.public_url_patterns && hostConfig.public_url_patterns.length > 0) {
+      for (const pattern of hostConfig.public_url_patterns) {
+        if (checkPublicURL(url.pathname, pattern)) {
+          logger.info(`[Legacy] Public URL access granted for ${url.pathname}`);
+          return fetch(request);  // Pass through to origin
+        }
+      }
+    }
+    
+    // 3. Check token authentication for webhooks
+    if (hostConfig.token_url_patterns && hostConfig.token_url_patterns.length > 0) {
+      for (const pattern of hostConfig.token_url_patterns) {
+        if (checkTokenURL(url.pathname, pattern)) {
+          const validatedToken = extractAndValidateTokens(request, hostConfig, logger);
+          if (validatedToken) {
+            logger.info(`[Legacy] Token auth granted for ${url.pathname} using token '${validatedToken.name}'`);
+            return fetch(request);  // Pass through to origin
+          }
         }
       }
     }
@@ -162,7 +227,31 @@ export async function handleRequest(request, env, ctx) {
 // Removed proxyRequest function - we now pass through directly to origin
 
 /**
- * Extract and validate tokens using per-token configuration
+ * Extract and validate tokens using Access Rules configuration
+ */
+function extractAndValidateTokensByConfig(request, tokenConfigs, logger) {
+  if (!tokenConfigs || tokenConfigs.length === 0) {
+    return null;
+  }
+
+  const url = new URL(request.url);
+  
+  // Try each configured token
+  for (const tokenConfig of tokenConfigs) {
+    const extractedToken = extractTokenByConfig(request, tokenConfig, url, logger);
+    
+    if (extractedToken && isTokenValid(extractedToken, tokenConfig, logger)) {
+      logger.debug(`Token validation successful for '${tokenConfig.name}'`);
+      return tokenConfig;
+    }
+  }
+  
+  logger.debug('No valid tokens found');
+  return null;
+}
+
+/**
+ * Legacy: Extract and validate tokens using per-token configuration
  */
 function extractAndValidateTokens(request, hostConfig, logger) {
   if (!hostConfig.webhook_tokens || hostConfig.webhook_tokens.length === 0) {

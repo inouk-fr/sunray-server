@@ -59,7 +59,62 @@
                     </group>
                     
                     <notebook>
-                        <page string="Access Control">
+                        <page string="Access Rules">
+                            <field name="access_rule_ids">
+                                <list default_order="priority, id">
+                                    <field name="priority"/>
+                                    <field name="description"/>
+                                    <field name="access_type" widget="badge" decoration-success="access_type == 'public'" decoration-info="access_type == 'cidr'" decoration-warning="access_type == 'token'"/>
+                                    <field name="is_active" widget="boolean_toggle"/>
+                                </list>
+                                <form>
+                                    <sheet>
+                                        <group>
+                                            <group>
+                                                <field name="description" placeholder="e.g., GitLab Webhook for CI/CD"/>
+                                                <field name="priority"/>
+                                                <field name="access_type"/>
+                                                <field name="is_active"/>
+                                            </group>
+                                        </group>
+                                        
+                                        <group string="URL Patterns">
+                                            <field name="url_patterns" widget="text" nolabel="1" 
+                                                   placeholder="^/api/webhook.*&#10;^/public/.*"/>
+                                        </group>
+                                        
+                                        <group string="CIDR Configuration" invisible="access_type != 'cidr'">
+                                            <field name="allowed_cidrs" widget="text" nolabel="1"
+                                                   placeholder="192.168.1.0/24&#10;10.0.0.0/8"/>
+                                        </group>
+                                        
+                                        <group string="Token Configuration" invisible="access_type != 'token'">
+                                            <field name="token_ids" nolabel="1" 
+                                                   context="{'default_host_id': parent.id}"
+                                                   domain="[('host_id', '=', parent.id)]">
+                                                <list>
+                                                    <field name="name"/>
+                                                    <field name="token_source"/>
+                                                    <field name="is_active" widget="boolean_toggle"/>
+                                                </list>
+                                            </field>
+                                        </group>
+                                    </sheet>
+                                </form>
+                            </field>
+                            
+                            <div class="mt16">
+                                <h3>Access Rule Priority</h3>
+                                <p>Rules are evaluated in priority order (lower number = higher priority).</p>
+                                <p>The first matching rule determines access type. If no rule matches, passkey authentication is required.</p>
+                            </div>
+                        </page>
+                        
+                        <page string="Legacy Access Control (DEPRECATED)" groups="base.group_system">
+                            <div class="alert alert-warning" role="alert">
+                                <strong>DEPRECATED:</strong> These fields are deprecated. Please use Access Rules instead.
+                                These fields will be removed in a future version.
+                            </div>
                             <group>
                                 <field name="allowed_cidrs" widget="text" placeholder="IP addresses or CIDR ranges for bypass&#10;Examples:&#10;192.168.1.100&#10;192.168.1.100/32&#10;10.0.0.0/8&#10;192.168.0.0/16"/>
                                 <field name="public_url_patterns" widget="text" placeholder="Regex patterns for public URLs&#10;Example:&#10;^/api/webhook&#10;^/public/.*&#10;^/health$"/>
@@ -89,7 +144,7 @@
                             <field name="user_ids" />
                         </page>
                         
-                        <page string="Webhook Tokens">
+                        <page string="API &amp; Webhook Tokens">
                             <field name="webhook_token_ids">
                                 <list>
                                     <field name="name"/>
@@ -136,10 +191,11 @@
                             
                             <div class="mt16">
                                 <h3>Examples for Common Providers:</h3>
-                                <p><strong>Shopify:</strong> Header = X-Shopify-Hmac-Sha256, Source = Header Only</p>
-                                <p><strong>Stripe:</strong> Header = Stripe-Signature, Source = Header Only</p>
-                                <p><strong>GitHub:</strong> Header = X-Hub-Signature-256, Source = Header Only</p>
-                                <p><strong>Generic API:</strong> Parameter = api_key, Source = Parameter Only</p>
+                                <p><strong>Shopify Webhooks:</strong> Header = X-Shopify-Hmac-Sha256, Source = Header Only</p>
+                                <p><strong>Stripe Webhooks:</strong> Header = Stripe-Signature, Source = Header Only</p>
+                                <p><strong>GitHub Webhooks:</strong> Header = X-Hub-Signature-256, Source = Header Only</p>
+                                <p><strong>Generic APIs:</strong> Parameter = api_key, Source = Parameter Only</p>
+                                <p><strong>Note:</strong> Create tokens here, then reference them in Access Rules to define which URLs they can access.</p>
                             </div>
                         </page>
                     </notebook>

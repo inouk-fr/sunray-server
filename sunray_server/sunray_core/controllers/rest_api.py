@@ -163,7 +163,7 @@ class SunrayRESTController(http.Controller):
         
         # Build configuration with version tracking
         config = {
-            'version': 3,
+            'version': 4,  # Incremented for Access Rules support
             'generated_at': fields.Datetime.now().isoformat(),
             'config_version': fields.Datetime.now().isoformat(),  # Global config version
             'host_versions': {},  # Per-host versions
@@ -215,22 +215,23 @@ class SunrayRESTController(http.Controller):
                 'authorized_users': host_obj.user_ids.mapped('username'),
                 'session_duration_override': host_obj.session_duration_s,
                 
-                # Security exceptions
-                'allowed_cidrs': host_obj.get_allowed_cidrs(),
-                'public_url_patterns': host_obj.get_public_url_patterns(),
-                'token_url_patterns': host_obj.get_token_url_patterns(),
+                # NEW: Access Rules - unified exceptions tree
+                'exceptions_tree': host_obj.get_exceptions_tree(),
                 
                 # WAF integration
                 'bypass_waf_for_authenticated': host_obj.bypass_waf_for_authenticated,
                 'waf_bypass_revalidation_minutes': host_obj.waf_bypass_revalidation_minutes or 15,
                 
-                # Token authentication (deprecated - kept for backward compatibility)
+                # Legacy fields (deprecated - kept for backward compatibility)
+                'allowed_cidrs': host_obj.get_allowed_cidrs(),
+                'public_url_patterns': host_obj.get_public_url_patterns(),
+                'token_url_patterns': host_obj.get_token_url_patterns(),
                 'webhook_header_name': host_obj.webhook_header_name,
                 'webhook_param_name': host_obj.webhook_param_name,
                 'webhook_tokens': []
             }
             
-            # Add active webhook tokens with per-token extraction config
+            # Add active webhook tokens with per-token extraction config (legacy compatibility)
             for token_obj in host_obj.webhook_token_ids.filtered('is_active'):
                 if token_obj.is_valid():
                     host_config['webhook_tokens'].append(token_obj.get_extraction_config())

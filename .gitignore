@@ -62,4 +62,5 @@ sunray_worker/*.log
 .claude.local.md
 *.local.md
 
-test_logs/
+test_logs/*.log
+coverage/

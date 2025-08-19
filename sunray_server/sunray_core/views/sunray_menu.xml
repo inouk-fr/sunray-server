@@ -24,6 +24,12 @@
               action="action_sunray_hosts"
               sequence="20"/>
     
+    <menuitem id="menu_sunray_access_rules" 
+              name="Access Rules" 
+              parent="menu_sunray_config" 
+              action="action_sunray_access_rules"
+              sequence="25"/>
+
     <menuitem id="menu_sunray_api_keys" 
               name="API Keys" 
               parent="menu_sunray_config" 

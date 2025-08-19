@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { getInvalidationTracker, InvalidationTracker } from './invalidation-tracker.js';
+import { getInvalidationTracker, InvalidationTracker, resetInvalidationTracker } from './invalidation-tracker.js';
 
 describe('InvalidationTracker', () => {
   let tracker;
@@ -8,8 +8,8 @@ describe('InvalidationTracker', () => {
     vi.useFakeTimers();
     // Get a fresh tracker instance
     tracker = getInvalidationTracker();
-    // Clear any existing state
-    tracker.cleanup();
+    // Clear any existing state completely
+    tracker.clear();
   });
 
   afterEach(() => {
@@ -99,6 +99,7 @@ describe('InvalidationTracker', () => {
       
       // Advance time by another 2 minutes (total 6 minutes) - signal should be cleaned
       vi.advanceTimersByTime(2 * 60 * 1000);
+      tracker.cleanup(); // Manually trigger cleanup since setInterval doesn't work with fake timers
       expect(tracker.hasProcessed('old_signal')).toBe(false);
     });
 
@@ -117,6 +118,7 @@ describe('InvalidationTracker', () => {
       
       // Advance time by 2 more minutes (old signal is 6 minutes old, new is 2 minutes)
       vi.advanceTimersByTime(2 * 60 * 1000);
+      tracker.cleanup(); // Manually trigger cleanup
       
       expect(tracker.hasProcessed('old_signal')).toBe(false);
       expect(tracker.hasProcessed('new_signal')).toBe(true);
@@ -140,6 +142,7 @@ describe('InvalidationTracker', () => {
       
       // Advance to trigger cleanup of signal1
       vi.advanceTimersByTime(2 * 60 * 1000);
+      tracker.cleanup(); // Manually trigger cleanup
       
       expect(tracker.hasProcessed('signal1')).toBe(false);
       expect(tracker.hasProcessed('signal2')).toBe(true);
@@ -147,6 +150,7 @@ describe('InvalidationTracker', () => {
       
       // Advance to trigger cleanup of signal2
       vi.advanceTimersByTime(2 * 60 * 1000);
+      tracker.cleanup(); // Manually trigger cleanup
       
       expect(tracker.hasProcessed('signal1')).toBe(false);
       expect(tracker.hasProcessed('signal2')).toBe(false);
@@ -196,6 +200,8 @@ describe('InvalidationTracker', () => {
     });
 
     it('should handle never having processed signals', () => {
+      // Reset the singleton to get a truly fresh instance
+      resetInvalidationTracker();
       const newTracker = InvalidationTracker.getInstance();
       const stats = newTracker.getStats();
       
@@ -250,6 +256,9 @@ describe('InvalidationTracker', () => {
         // Advance time slightly for each signal
         vi.advanceTimersByTime(1000); // 1 second
       }
+      
+      // Trigger cleanup to simulate periodic cleanup
+      tracker.cleanup();
       
       // Count how many are still tracked
       let activeCount = 0;

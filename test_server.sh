@@ -54,6 +54,7 @@ usage() {
     echo "  $0                                    # Run sunray_core tests"
     echo "  $0 --full --verbose                  # Run all tests with debug output"
     echo "  $0 --test TestWebhookToken           # Run specific test class"
+    echo "  $0 --test TestAccessRules            # Run Access Rules test class"
     echo "  $0 --clean --coverage                # Clean run with coverage"
     echo "  $0 --test TestCacheInvalidation --method test_version_field_initialization"
     echo ""
@@ -92,7 +93,7 @@ check_prerequisites() {
     fi
     
     # Check Python environment
-    if ! python3 -c "import odoo" 2>/dev/null; then
+    if ! py3x/bin/python3 -c "import odoo" 2>/dev/null; then
         print_msg $YELLOW "Warning: Odoo not found in Python path. Continuing anyway..."
     fi
     

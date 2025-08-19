@@ -97,7 +97,8 @@ class TestWebhookTokenMultiProvider(TransactionCase):
             'param_name': False,
             'token_source': 'header',
             'allowed_cidrs': ['192.168.1.0/24', '10.0.0.0/8'],
-            'expires_at': None
+            'expires_at': None,
+            'is_active': True
         }
         
         self.assertEqual(config, expected_config)
@@ -167,22 +168,28 @@ class TestWebhookTokenMultiProvider(TransactionCase):
     def test_token_validation_constraints(self):
         """Test that database constraints work correctly"""
         
+        from odoo.exceptions import ValidationError
+        import psycopg2
+        
         # Test that header source requires header_name
-        with self.assertRaises(Exception):
+        # SQL constraints fire first, causing database error
+        with self.assertRaises(Exception):  # Database constraint violation
             self.env['sunray.webhook.token'].create([{
                 'host_id': self.host.id,
                 'name': 'Invalid Header Token',
+                'token': 'test_token_123',  # Add required token field
                 'token_source': 'header'
-                # Missing header_name
+                # Missing header_name - triggers SQL constraint first
             }])
         
-        # Test that param source requires param_name
-        with self.assertRaises(Exception):
+        # Test that param source requires param_name  
+        with self.assertRaises(Exception):  # Database constraint violation
             self.env['sunray.webhook.token'].create([{
                 'host_id': self.host.id,
                 'name': 'Invalid Param Token',
+                'token': 'test_token_456',  # Add required token field
                 'token_source': 'param'
-                # Missing param_name
+                # Missing param_name - triggers SQL constraint first
             }])
         
         # Test that both source requires at least one of header_name or param_name
@@ -190,6 +197,7 @@ class TestWebhookTokenMultiProvider(TransactionCase):
         token1 = self.env['sunray.webhook.token'].create([{
             'host_id': self.host.id,
             'name': 'Valid Both Token 1',
+            'token': 'valid_token_123',  # Add required token field
             'header_name': 'X-Token',
             'token_source': 'both'
         }])
@@ -199,6 +207,7 @@ class TestWebhookTokenMultiProvider(TransactionCase):
         token2 = self.env['sunray.webhook.token'].create([{
             'host_id': self.host.id,
             'name': 'Valid Both Token 2',
+            'token': 'valid_token_456',  # Add required token field
             'param_name': 'token',
             'token_source': 'both'
         }])
@@ -249,7 +258,7 @@ class TestWebhookTokenMultiProvider(TransactionCase):
         """Test that the API still includes legacy fields for backward compatibility"""
         
         # Create a token
-        self.env['sunray.webhook.token'].create([{
+        test_token = self.env['sunray.webhook.token'].create([{
             'host_id': self.host.id,
             'name': 'Test Token',
             'header_name': 'X-Test-Token',
@@ -267,7 +276,8 @@ class TestWebhookTokenMultiProvider(TransactionCase):
                 'domain': host_obj.domain,
                 'webhook_header_name': host_obj.webhook_header_name,  # Legacy field
                 'webhook_param_name': host_obj.webhook_param_name,    # Legacy field
-                'webhook_tokens': []
+                'webhook_tokens': [],
+                'exceptions_tree': host_obj.get_exceptions_tree()  # New format
             }
             
             # Add tokens with new format
@@ -282,7 +292,10 @@ class TestWebhookTokenMultiProvider(TransactionCase):
         self.assertIn('webhook_header_name', test_host)
         self.assertIn('webhook_param_name', test_host)
         
-        # Verify new format is also present
+        # Verify new exceptions_tree format is present
+        self.assertIn('exceptions_tree', test_host)
+        
+        # Verify legacy tokens format is also present
         self.assertIn('webhook_tokens', test_host)
         self.assertTrue(len(test_host['webhook_tokens']) > 0)
         
@@ -291,3 +304,123 @@ class TestWebhookTokenMultiProvider(TransactionCase):
         required_fields = ['token', 'name', 'header_name', 'param_name', 'token_source']
         for field in required_fields:
             self.assertIn(field, token_config)
+    
+    def test_access_rules_integration(self):
+        """Test integration between webhook tokens and access rules"""
+        
+        # Create tokens for different providers
+        shopify_token = self.env['sunray.webhook.token'].create([{
+            'host_id': self.host.id,
+            'name': 'Shopify Webhook',
+            'token': 'shopify_secret_123',
+            'header_name': 'X-Shopify-Hmac-Sha256',
+            'token_source': 'header'
+        }])
+        
+        stripe_token = self.env['sunray.webhook.token'].create([{
+            'host_id': self.host.id,
+            'name': 'Stripe Webhook',
+            'token': 'stripe_secret_456',
+            'header_name': 'Stripe-Signature',
+            'token_source': 'header'
+        }])
+        
+        # Create access rule that uses multiple tokens
+        access_rule = self.env['sunray.access.rule'].create([{
+            'host_id': self.host.id,
+            'description': 'Payment Provider Webhooks',
+            'priority': 100,
+            'access_type': 'token',
+            'url_patterns': '^/webhooks/.*\n^/api/payments/.*',
+            'token_ids': [(6, 0, [shopify_token.id, stripe_token.id])]
+        }])
+        
+        # Get exceptions tree
+        tree = self.host.get_exceptions_tree()
+        
+        # Should have one rule
+        self.assertEqual(len(tree), 1)
+        rule_config = tree[0]
+        
+        # Verify rule structure
+        self.assertEqual(rule_config['priority'], 100)
+        self.assertEqual(rule_config['access_type'], 'token')
+        self.assertEqual(rule_config['description'], 'Payment Provider Webhooks')
+        
+        # Should have both URL patterns
+        expected_patterns = ['^/webhooks/.*', '^/api/payments/.*']
+        self.assertEqual(rule_config['url_patterns'], expected_patterns)
+        
+        # Should include both tokens
+        self.assertEqual(len(rule_config['tokens']), 2)
+        token_names = [token['name'] for token in rule_config['tokens']]
+        self.assertIn('Shopify Webhook', token_names)
+        self.assertIn('Stripe Webhook', token_names)
+        
+        # Verify token extraction configs are complete
+        for token_config in rule_config['tokens']:
+            self.assertIn('token', token_config)
+            self.assertIn('name', token_config)
+            self.assertIn('header_name', token_config)
+            self.assertIn('token_source', token_config)
+    
+    def test_mixed_access_rules_priority(self):
+        """Test that different access rule types work together with proper priority"""
+        
+        # Create webhook token
+        webhook_token = self.env['sunray.webhook.token'].create([{
+            'host_id': self.host.id,
+            'name': 'CI/CD Webhook',
+            'token': 'cicd_secret_789',
+            'header_name': 'X-CI-Token',
+            'token_source': 'header'
+        }])
+        
+        # Create multiple access rules with different priorities
+        public_rule = self.env['sunray.access.rule'].create([{
+            'host_id': self.host.id,
+            'description': 'Health Checks',
+            'priority': 300,  # Lowest priority
+            'access_type': 'public',
+            'url_patterns': '^/health$\n^/status$'
+        }])
+        
+        cidr_rule = self.env['sunray.access.rule'].create([{
+            'host_id': self.host.id,
+            'description': 'Admin Network',
+            'priority': 200,  # Medium priority
+            'access_type': 'cidr',
+            'url_patterns': '^/admin/.*',
+            'allowed_cidrs': '192.168.1.0/24\n10.0.0.0/8'
+        }])
+        
+        token_rule = self.env['sunray.access.rule'].create([{
+            'host_id': self.host.id,
+            'description': 'Webhook Endpoints',
+            'priority': 100,  # Highest priority
+            'access_type': 'token',
+            'url_patterns': '^/webhooks/.*',
+            'token_ids': [(6, 0, [webhook_token.id])]
+        }])
+        
+        # Get exceptions tree
+        tree = self.host.get_exceptions_tree()
+        
+        # Should be ordered by priority (lowest number first)
+        self.assertEqual(len(tree), 3)
+        self.assertEqual(tree[0]['priority'], 100)  # Token rule first
+        self.assertEqual(tree[0]['description'], 'Webhook Endpoints')
+        self.assertEqual(tree[1]['priority'], 200)  # CIDR rule second
+        self.assertEqual(tree[1]['description'], 'Admin Network')
+        self.assertEqual(tree[2]['priority'], 300)  # Public rule last
+        self.assertEqual(tree[2]['description'], 'Health Checks')
+        
+        # Verify each rule has correct structure
+        self.assertEqual(tree[0]['access_type'], 'token')
+        self.assertEqual(len(tree[0]['tokens']), 1)
+        
+        self.assertEqual(tree[1]['access_type'], 'cidr')
+        self.assertEqual(tree[1]['allowed_cidrs'], ['192.168.1.0/24', '10.0.0.0/8'])
+        
+        self.assertEqual(tree[2]['access_type'], 'public')
+        self.assertEqual(tree[2]['url_patterns'], ['^/health$', '^/status$'])

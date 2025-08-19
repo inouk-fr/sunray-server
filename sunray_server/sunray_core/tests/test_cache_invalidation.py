@@ -81,10 +81,26 @@ class TestCacheInvalidation(TransactionCase):
         from odoo.addons.sunray_core.controllers.rest_api import SunrayRESTController
         controller = SunrayRESTController()
         
-        # Mock request
-        with patch('odoo.http.request') as mock_request:
-            mock_request.env = self.env
-            mock_request.httprequest.headers = {'Authorization': f'Bearer {self.api_key.key}'}
+        # Create properly configured mock request object
+        mock_request_obj = MagicMock()
+        mock_request_obj.env = self.env
+        
+        # Configure httprequest mock to return strings instead of MagicMock objects
+        mock_httprequest = MagicMock()
+        mock_httprequest.headers = {
+            'X-Worker-ID': 'test-worker-123',
+            'User-Agent': 'Test-Agent/1.0',
+            'X-Forwarded-For': '192.168.1.100'
+        }
+        mock_httprequest.environ = {
+            'REMOTE_ADDR': '192.168.1.100',
+            'HTTP_HOST': 'test.example.com'
+        }
+        mock_request_obj.httprequest = mock_httprequest
+        
+        # Mock authentication to return True and patch request object
+        with patch.object(controller, '_authenticate_api', return_value=True), \
+             patch('odoo.addons.sunray_core.controllers.rest_api.request', mock_request_obj):
             
             # Call get_config
             response = controller.get_config()
@@ -332,9 +348,26 @@ class TestCacheInvalidation(TransactionCase):
         from odoo.addons.sunray_core.controllers.rest_api import SunrayRESTController
         controller = SunrayRESTController()
         
-        with patch('odoo.http.request') as mock_request:
-            mock_request.env = self.env
-            mock_request.httprequest.headers = {'Authorization': f'Bearer {self.api_key.key}'}
+        # Create properly configured mock request object
+        mock_request_obj = MagicMock()
+        mock_request_obj.env = self.env
+        
+        # Configure httprequest mock to return strings instead of MagicMock objects
+        mock_httprequest = MagicMock()
+        mock_httprequest.headers = {
+            'X-Worker-ID': 'test-worker-123',
+            'User-Agent': 'Test-Agent/1.0',
+            'X-Forwarded-For': '192.168.1.100'
+        }
+        mock_httprequest.environ = {
+            'REMOTE_ADDR': '192.168.1.100',
+            'HTTP_HOST': 'test.example.com'
+        }
+        mock_request_obj.httprequest = mock_httprequest
+        
+        # Mock authentication to return True and patch request object
+        with patch.object(controller, '_authenticate_api', return_value=True), \
+             patch('odoo.addons.sunray_core.controllers.rest_api.request', mock_request_obj):
             
             response = controller.get_config()
             data = json.loads(response.data)

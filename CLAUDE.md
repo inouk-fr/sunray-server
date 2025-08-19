@@ -106,11 +106,18 @@ bin/sunray-srvr -u sunray_core               # Update sunray_core module
 bin/sunray-srvr -u all --stop-after-init     # Update all modules and exit
 bin/sunray-srvr -i sunray_core               # Install sunray_core module
 
-# Testing
-bin/sunray-srvr --test-enable --stop-after-init -u sunray_core
-bin/sunray-srvr --log-level=debug_sql --test-enable --stop-after-init -u sunray_core
+# Testing - IMPORTANT: Use Only Test Launcher Scripts
+# NEVER run bin/sunray-srvr --test-enable directly
+# ALWAYS use the test launcher scripts at repository root:
 
-# Fresh Database for Testing
+./test_server.sh                           # Run all server tests with comprehensive reporting
+./test_server.sh --test TestAccessRules    # Run specific Access Rules tests
+./test_server.sh --coverage --verbose      # Full test run with coverage
+./test_worker.sh                           # Run all worker tests
+./test_worker.sh --coverage                # Worker tests with coverage report
+./test_worker.sh --watch                   # Interactive development mode
+
+# Fresh Database for Testing (if needed by test scripts)
 export TESTDB="sunray_test_$(date +%s)"
 dropdb ${TESTDB} 2>/dev/null || true
 createdb ${TESTDB}
@@ -276,10 +283,13 @@ bin/sunray-srvr srctl setuptoken create "username" --sr-device "laptop" --sr-hou
 ### Security Model
 
 - **Default Locked**: All resources protected by default
-- **Whitelist Exceptions**:
-  - CIDR ranges for IP-based access
-  - Public URL patterns (regex)
-  - Webhook tokens for API access
+- **NEW: Access Rules System** (unified exceptions management):
+  - Priority-based rule evaluation (lower number = higher priority)
+  - **Public Access**: No authentication required
+  - **CIDR Access**: IP address/range whitelist
+  - **Token Access**: API/webhook token authentication
+  - First matching rule determines access type
+- **Legacy Support**: Fallback to separate fields (deprecated)
 - **WebAuthn/Passkeys**: Primary authentication method
 - **Session Management**: Secure cookies with configurable TTL
 
@@ -425,36 +435,112 @@ def test_webhook(self, mock_post):
     # Test code here
 ```
 
+### Test Launcher Scripts
+
+Two comprehensive test runners are available for both server and worker components:
+
+#### Server Tests (`./test_server.sh`)
+```bash
+# Run all Sunray server tests
+./test_server.sh
+
+# Run specific test class (Access Rules, Webhook Tokens, etc.)
+./test_server.sh --test TestAccessRules
+
+# Clean database run with coverage reporting
+./test_server.sh --clean --coverage --verbose
+
+# List all available test classes and methods
+./test_server.sh --list-tests
+
+# Run specific test method
+./test_server.sh --test TestAccessRules --method test_priority_ordering
+```
+
+#### Worker Tests (`./test_worker.sh`)
+```bash
+# Run all worker tests
+./test_worker.sh
+
+# Interactive development mode (auto-rerun on changes)
+./test_worker.sh --watch
+
+# Generate coverage report
+./test_worker.sh --coverage
+
+# Run specific test file
+./test_worker.sh access-rules.test.js
+
+# Run with UI interface
+./test_worker.sh --ui
+
+# List available test files
+./test_worker.sh --list-tests
+```
+
+#### Test Features
+- **Comprehensive Logging**: All test runs logged to `test_logs/` directory
+- **Coverage Reports**: HTML coverage reports in `coverage/` directory
+- **Colored Output**: Clear visual feedback on test results
+- **Parallel Execution**: Fast test runs with automatic parallelization
+- **Environment Validation**: Checks dependencies and configuration
+- **Specific Test Targeting**: Run individual classes, methods, or files
+
 ## Current Development Status
 
-### MVP Implementation (4-week timeline)
+### Access Rules System Implementation ✅
 
-**Week 1**: Core Infrastructure ✓
-- Project structure setup
-- Basic Odoo addon scaffolding
-- Worker project initialization
+**Phase 1: Core Implementation** (COMPLETED)
+- ✅ Created `sunray.access.rule` model with priority-based evaluation
+- ✅ Updated `sunray.host` model to support Access Rules
+- ✅ Enhanced `sunray.webhook.token` descriptions for API/webhook clarity
+- ✅ Built comprehensive UI (list, form, search views)
+- ✅ Updated REST API to generate exceptions tree (Config API v4)
+- ✅ Simplified Worker handler.js to use exceptions tree
+- ✅ Created comprehensive test suite
+- ✅ Updated documentation
 
-**Week 2**: Authentication Implementation (Current)
-- WebAuthn integration in Worker
-- Passkey storage in Odoo
-- Session management
+**Key Benefits Achieved:**
+- **Unified Access Control**: Single system for all access exceptions
+- **Token Reuse**: Multiple URL patterns can reference same tokens
+- **Priority-Based**: Clear evaluation order (first match wins)
+- **Worker Simplification**: Business logic in server, worker executes decisions
+- **Backward Compatibility**: Legacy fields supported during transition
+- **Future-Ready**: Kubernetes ForwardAuth compatibility
 
-**Week 3**: Admin Interface
-- Odoo views for user management
-- Host configuration UI
-- Setup token generation
+### Architecture Improvements
 
-**Week 4**: Testing & Documentation
-- Integration tests
-- Demo application
-- Deployment documentation
+**Before (Legacy):**
+```
+Host Configuration:
+├── allowed_cidrs (scattered)
+├── public_url_patterns (scattered)
+├── token_url_patterns (scattered)
+└── webhook_tokens (limited reuse)
+```
 
-### Next Steps
+**After (Access Rules):**
+```
+Host Configuration:
+├── Access Rules (unified)
+│   ├── Rule 1: Priority 100, Public, [/health, /status]
+│   ├── Rule 2: Priority 200, CIDR, [/admin/*], [192.168.1.0/24]
+│   └── Rule 3: Priority 300, Token, [/api/*, /webhook/*], [Token1, Token2]
+└── exceptions_tree (preprocessed for worker)
+```
 
-1. Create Worker implementation with WebAuthn
-2. Implement sunray_core Odoo addon
-3. Set up demo application
-4. Write comprehensive tests
+### Next Development Phases
+
+**Phase 2: Migration Tools** (Future)
+- Legacy field migration utilities
+- Bulk rule creation from existing configurations
+- Migration validation and testing
+
+**Phase 3: Advanced Features** (Future)
+- Time-based access rules
+- Geographic restrictions
+- Advanced audit reporting
+- Rule templates and presets
 
 ## Configuration Management
 

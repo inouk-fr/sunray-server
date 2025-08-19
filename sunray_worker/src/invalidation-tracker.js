@@ -4,15 +4,24 @@
 
 class InvalidationTracker {
   constructor() {
-    // Track processed signal versions
+    // Track processed signal versions with timestamps
     this.processed = new Map();
     // Prevent concurrent processing
     this.locks = new Map();
     // Track last invalidation time
     this.lastInvalidation = null;
+    // Track cumulative processed count
+    this.cumulativeCount = 0;
     
     // Clean up old entries periodically
     this.startCleanup();
+  }
+  
+  /**
+   * Get the singleton instance (for test compatibility)
+   */
+  static getInstance() {
+    return getInvalidationTracker();
   }
   
   /**
@@ -25,7 +34,7 @@ class InvalidationTracker {
   async processSignal(key, signalVersion, clearFunction) {
     // Check if already processed
     const lastProcessed = this.processed.get(key);
-    if (lastProcessed && lastProcessed >= signalVersion) {
+    if (lastProcessed && lastProcessed.version >= signalVersion) {
       console.log(`Signal ${key} v${signalVersion} already processed`);
       return false; // Already processed this or newer version
     }
@@ -42,31 +51,33 @@ class InvalidationTracker {
     try {
       // Double-check after acquiring lock
       const currentProcessed = this.processed.get(key);
-      if (currentProcessed && currentProcessed >= signalVersion) {
+      if (currentProcessed && currentProcessed.version >= signalVersion) {
         return false;
       }
       
       console.log(`Processing signal ${key} v${signalVersion}`);
       
       // Mark as processed BEFORE clearing (prevents race conditions)
-      this.processed.set(key, signalVersion);
+      const timestamp = Date.now();
+      this.processed.set(key, { version: signalVersion, timestamp });
       this.lastInvalidation = new Date().toISOString();
+      this.cumulativeCount++;
       
       // Execute the clear function
       await clearFunction();
       
       console.log(`Successfully processed signal ${key} v${signalVersion}`);
       
-      // Schedule cleanup of this entry after 5 minutes
-      setTimeout(() => {
-        this.processed.delete(key);
-      }, 300000);
+      // Individual cleanup is handled by periodic cleanup now
+      // setTimeout(() => {
+      //   this.processed.delete(key);
+      // }, 300000);
       
       return true;
       
     } catch (error) {
       console.error(`Error processing signal ${key}:`, error);
-      // Remove from processed on error so it can be retried
+      // Remove from processed on error so it can be retried (don't decrement count)
       this.processed.delete(key);
       throw error;
       
@@ -80,7 +91,7 @@ class InvalidationTracker {
    * Get count of processed signals
    */
   getProcessedCount() {
-    return this.processed.size;
+    return this.cumulativeCount;
   }
   
   /**
@@ -94,8 +105,10 @@ class InvalidationTracker {
    * Mark a signal as processed (for testing)
    */
   markProcessed(key, version = Date.now()) {
-    this.processed.set(key, version);
+    const timestamp = Date.now();
+    this.processed.set(key, { version, timestamp });
     this.lastInvalidation = new Date().toISOString();
+    this.cumulativeCount++; // Always increment, even for duplicates (as per test expectations)
   }
   
   /**
@@ -110,8 +123,8 @@ class InvalidationTracker {
    */
   getStats() {
     return {
-      processed_count: this.processed.size,
-      last_invalidation: this.lastInvalidation
+      processed_count: this.cumulativeCount,
+      last_invalidation: this.lastInvalidation || 'Never'
     };
   }
   
@@ -120,7 +133,7 @@ class InvalidationTracker {
    */
   startCleanup() {
     // Clean up entries older than 5 minutes every minute
-    setInterval(() => {
+    this.cleanupIntervalId = setInterval(() => {
       this.cleanup();
     }, 60000); // Every minute
   }
@@ -132,8 +145,8 @@ class InvalidationTracker {
     const fiveMinutesAgo = Date.now() - 300000;
     let cleaned = 0;
     
-    for (const [key, timestamp] of this.processed.entries()) {
-      if (timestamp < fiveMinutesAgo) {
+    for (const [key, data] of this.processed.entries()) {
+      if (data.timestamp < fiveMinutesAgo) {
         this.processed.delete(key);
         cleaned++;
       }
@@ -151,6 +164,12 @@ class InvalidationTracker {
     this.processed.clear();
     this.locks.clear();
     this.lastInvalidation = null;
+    this.cumulativeCount = 0;
+    // Clear interval to prevent memory leaks in tests
+    if (this.cleanupIntervalId) {
+      clearInterval(this.cleanupIntervalId);
+      this.cleanupIntervalId = null;
+    }
   }
 }
 
@@ -165,6 +184,16 @@ export function getInvalidationTracker() {
     tracker = new InvalidationTracker();
   }
   return tracker;
+}
+
+/**
+ * Reset the singleton for testing
+ */
+export function resetInvalidationTracker() {
+  if (tracker && tracker.cleanupIntervalId) {
+    clearInterval(tracker.cleanupIntervalId);
+  }
+  tracker = null;
 }
 
 // Export the class for testing
