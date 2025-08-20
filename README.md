@@ -1,29 +1,46 @@
-# Muppy Sunray
+# Sunray Server
 
-**Muppy Sunray** is a lightweight, secure, self-hosted solution for authorizing HTTP access to private cloud services without VPN or fixed IPs. The project integrates with Cloudflare's infrastructure to provide enterprise-grade security at a fraction of traditional costs.
+Universal authentication and authorization server supporting multiple edge worker implementations.
+
+**Sunray Server** is the core component of the Sunray ecosystem - a lightweight, secure, self-hosted solution for authorizing HTTP access to private cloud services without VPN or fixed IPs. The server provides a rich API that handles all business logic, while workers are thin adapters that translate platform-specific requests to the server's universal API.
 
 ## ✨ Key Features
 
 - 🔐 **WebAuthn/Passkeys**: Passwordless authentication using biometrics
-- 🌐 **Cloudflare Worker**: Edge authentication and request routing
 - 🎛️ **Odoo 18 Admin Interface**: Centralized user and host management
-- 🔒 **Zero Trust Security**: Default deny, whitelist exceptions only
+- 🔒 **Zero Trust Security**: Default deny, access rules with priority-based evaluation
 - 📊 **Audit Logging**: Complete authentication and access trails
+- 🌐 **Multi-Worker Support**: Server-centric API supports various edge implementations
+- ⚡ **Rich REST API**: Comprehensive endpoints for worker communication
+
+## 🏗️ Architecture
+
+### Server-Centric Design
+The Sunray Server contains all business logic:
+- User management and WebAuthn/Passkeys
+- Access rules and policy evaluation  
+- Session management
+- Audit logging
+- Token validation
+
+### Supported Workers
+Workers are thin adapters that translate platform-specific requests to our API:
+- [inouk-sunray-worker-cloudflare](https://gitlab.com/cmorisse/inouk-sunray-worker-cloudflare) - Cloudflare Workers
+- [inouk-sunray-worker-k8s](https://gitlab.com/cmorisse/inouk-sunray-worker-k8s) - Kubernetes ForwardAuth (coming soon)
+- Future: nginx, Traefik, Istio, AWS Lambda workers
 
 ## 📂 Project Structure
 
 ```
-.
-├── sunray_worker/             # Cloudflare Worker
-│   ├── src/                   # Worker source code
-│   └── wrangler.toml          # Cloudflare configuration
-├── sunray_server/             # Odoo 18 addons
+inouk-sunray-server/
+├── project_addons/            # Odoo 18 addons (ikb standard)
 │   └── sunray_core/           # Core authentication addon
-├── demo-app/                  # Demo protected application
-├── docs/                      # Documentation
+├── docs/                      # Documentation and specifications
 ├── config/                    # Configuration examples
 ├── schema/                    # JSON Schema validation
-└── README.md
+├── bin/                       # Executable scripts
+│   └── sunray-srvr           # Odoo launcher script
+└── etc/                       # Configuration files
 ```
 
 ## 🚀 Quick Start
@@ -33,390 +50,135 @@
 - Node.js 20.x and npm 10.x
 - Python 3.10+
 - PostgreSQL 14+
-- Cloudflare account
-- Domain managed by Cloudflare
+- Domain for protected services
 
 ### Installation
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
-   cd appserver-sunray18
+   git clone https://gitlab.com/cmorisse/inouk-sunray-server.git
+   cd inouk-sunray-server
    ```
 
 2. **Install dependencies**
    ```bash
-   # Node.js dependencies for Worker
-   cd sunray_worker && npm install
-   
    # Python dependencies for Sunray Server
    ikb install  # Processes buildit.json and requirements.txt
    ```
 
-3. **Configure Sunray Server**
+3. **Start Sunray Server**
    ```bash
    # Install sunray_core addon
    bin/sunray-srvr -i sunray_core
    
-   # Generate API key for Worker
+   # Start server
+   bin/sunray-srvr
+   ```
+
+4. **Generate API key for workers**
+   ```bash
    bin/sunray-srvr srctl apikey create Worker_API_Key --sr-worker
    ```
 
-4. **Deploy Worker to Cloudflare**
-   ```bash
-   cd sunray_worker
-   wrangler deploy
-   ```
+5. **Deploy a worker**
+   Choose and deploy a worker implementation:
+   - [Cloudflare Workers Setup](https://gitlab.com/cmorisse/inouk-sunray-worker-cloudflare)
+   - Kubernetes ForwardAuth (coming soon)
 
-## 🔧 Cloudflared Tunnel Setup
+## 🔧 Development
 
-Cloudflared tunnels provide secure access to your Sunray Server without exposing it to the public internet.
-
-### Installation
+### Sunray Server Development
 
 ```bash
-# Download and install cloudflared
-curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-sudo dpkg -i cloudflared.deb
+# Start server in development mode
+bin/sunray-srvr --dev=all
 
-# Verify installation
-cloudflared --version
+# Update modules
+bin/sunray-srvr -u sunray_core
+
+# Run server tests
+./test_server.sh
+./test_server.sh --test TestAccessRules  # Specific test class
+./test_server.sh --coverage --verbose    # With coverage
 ```
 
-### Authentication
+### Sunray CLI (srctl)
+
+Manage Sunray objects via command line:
 
 ```bash
-# Login to Cloudflare (one-time setup)
-cloudflared tunnel login
-...
-Leave cloudflared running to download the cert automatically.
-2025-08-11T13:18:31Z INF You have successfully logged in.
-If you wish to copy your credentials to a server, they have been saved to:
-/home/muppy/.cloudflared/cert.pem
+# Usage: bin/sunray-srvr srctl <object> <action> [options]
+bin/sunray-srvr srctl apikey list
+bin/sunray-srvr srctl user create "username" --sr-email "user@example.com"
+bin/sunray-srvr srctl setuptoken create "username" --sr-device "laptop" --sr-hours 24
 ```
 
-### Create and Configure Tunnel
+## 🔐 Security Model
 
-```bash
-# Create a named tunnel
-cloudflared tunnel create sunray-server-dev-cyril
+- **Default Locked**: All resources protected by default
+- **Access Rules System**: Priority-based rule evaluation
+  - **Public Access**: No authentication required
+  - **CIDR Access**: IP address/range whitelist  
+  - **Token Access**: API/webhook token authentication
+- **WebAuthn/Passkeys**: Primary authentication method
+- **Session Management**: Secure cookies with configurable TTL
 
-# Create configuration file
-cat > ~/.cloudflared/config.yml << EOF
-tunnel: sunray-server
-credentials-file: /home/$USER/.cloudflared/<tunnel-id>.json
+## 📡 API Documentation
 
-ingress:
-  - hostname: sr-srvr-dev-cyril.pack8s.com
-    service: http://localhost:8069
-    originRequest:
-      noTLSVerify: true
-  - service: http_status:404
-EOF
-```
+The server provides a comprehensive REST API at `/sunray-srvr/v1/*`:
 
-### Run the Tunnel
+### Core Endpoints
+- `/config` - Get configuration and access rules (Worker → Server)
+- `/setup-tokens/validate` - Validate setup tokens
+- `/users/<username>/passkeys` - Register passkeys
+- `/sessions/validate` - Validate sessions
+- `/audit` - Record audit events
 
-```bash
-# Test the tunnel
-cloudflared tunnel run sunray-server
-
-# Or run with quick tunnel (for testing)
-cloudflared tunnel --url http://localhost:8069
-
-# Run as a service (production)
-sudo cloudflared service install
-sudo systemctl start cloudflared
-sudo systemctl enable cloudflared
-```
-
-### Configure DNS
-
-In Cloudflare Dashboard:
-1. Go to DNS settings for your domain
-2. Add CNAME record:
-   - Name: `sr-srvr-dev-cyril`
-   - Target: `<tunnel-id>.cfargotunnel.com`
-   - Proxy: Enabled (orange cloud)
-
-### Security Configuration
-
-Apply WAF rules in Cloudflare Dashboard to restrict access:
-
-```
-# Example: Block all traffic except from trusted IPs
-(http.host eq "sunray-servrr-dev-cyril.pack8s.com" 
- and not ip.src in { 
-   178.170.1.44 
-   147.79.118.98 
-   5.135.178.38 
-   5.250.182.225 
-   162.19.69.75 
- })
-Action: Block
-```
-
-### Monitoring
-
-```bash
-# View tunnel status
-cloudflared tunnel list
-
-# View tunnel info
-cloudflared tunnel info sunray-server
-
-# View tunnel metrics
-cloudflared tunnel metrics sunray-server
-```
-
-## 🔐 Security Considerations
-
-### Change Default Credentials
-
-**CRITICAL**: Before exposing any service, change default admin credentials:
-
-```bash
-# Via Odoo CLI
-bin/sunray-srvr shell
->>> admin = env['res.users'].search([('login', '=', 'admin')])
->>> admin.password = 'your-secure-password-here'
->>> env.cr.commit()
-```
-
-### Firewall Rules
-
-1. **API Access**: Restrict `/sunray-srvr/v1/*` endpoints to Cloudflare Workers only
-2. **Admin Access**: Use internal URLs or restrict to trusted IPs
-3. **Protected Hosts**: All traffic must go through Worker authentication
-
-## 📚 Documentation
-
-- [Architecture Overview](docs/architecture.md)
-- [API Documentation](docs/api.md)
-- [Security Model](docs/security.md)
-- [Deployment Guide](docs/deployment.md)
+See [API_CONTRACT.md](./API_CONTRACT.md) for complete API specification.
 
 ## 🧪 Testing
 
-Sunray includes comprehensive test suites for both server (Odoo) and worker (Cloudflare) components with dedicated test scripts for easy execution.
-
-### Prerequisites
-
-- **Database**: PostgreSQL with test database access
-- **Node.js**: Version 20.x for worker tests  
-- **Environment**: All required environment variables configured
-- **Dependencies**: `npm install` completed in `sunray_worker/`
-
-### Quick Start
-
 ```bash
-# Run server tests (Odoo/Python)
+# Run all server tests with comprehensive reporting
 ./test_server.sh
-
-# Run worker tests (Vitest/Node.js)
-./test_worker.sh
-
-# Run both with coverage
-./test_server.sh --coverage && ./test_worker.sh --coverage
-```
-
-### Server Tests (Odoo)
-
-The `test_server.sh` script provides comprehensive testing for the Sunray Server (Odoo addon):
-
-#### Basic Usage
-```bash
-# Run sunray_core tests (default)
-./test_server.sh
-
-# Run with verbose debug output
-./test_server.sh --verbose
-
-# Run all module tests
-./test_server.sh --full
-
-# Generate coverage report  
-./test_server.sh --coverage
-```
-
-#### Advanced Options
-```bash
-# Clean database before testing
-./test_server.sh --clean
 
 # Run specific test class
-./test_server.sh --test TestCacheInvalidation
+./test_server.sh --test TestAccessRules
 
-# Run specific test method
-./test_server.sh --test TestWebhookToken --method test_token_creation
+# Full test run with coverage
+./test_server.sh --coverage --verbose
 
-# Stop on first failure
-./test_server.sh --stop-on-fail
-
-# List available tests
+# List all available test classes
 ./test_server.sh --list-tests
 ```
 
-#### Test Categories
-- **Multi-provider webhook tokens**: Authentication for Shopify, Stripe, GitHub webhooks
-- **Cache invalidation**: Version tracking and worker synchronization
-- **User management**: WebAuthn passkey registration and validation
-- **Host configuration**: Protected resource management
-- **Audit logging**: Security event tracking and compliance
-
-### Worker Tests (Vitest)
-
-The `test_worker.sh` script provides testing for the Cloudflare Worker components:
-
-#### Basic Usage
-```bash
-# Run all tests once
-./test_worker.sh
-
-# Development watch mode (auto-rerun on changes)
-./test_worker.sh --watch
-
-# Generate coverage report
-./test_worker.sh --coverage
-
-# Run with visual UI
-./test_worker.sh --ui
-```
-
-#### Advanced Options
-```bash
-# Run specific test file
-./test_worker.sh cache.test.js
-
-# Verbose output with debug info
-./test_worker.sh --verbose
-
-# Stop on first failure
-./test_worker.sh --bail
-
-# Environment validation only
-./test_worker.sh --check-env
-
-# List available tests
-./test_worker.sh --list-tests
-```
-
-#### Test Categories
-- **Cache management**: Configuration caching and invalidation
-- **Token extraction**: Multi-provider webhook authentication
-- **Session handling**: WebAuthn session management
-- **Request routing**: Protected resource access control
-
-### Test Output and Logs
-
-Both scripts generate detailed logs and reports:
+## 🐳 Docker
 
 ```bash
-# Logs are saved to
-./test_logs/
-├── server_test_20250817_094512.log
-├── worker_test_20250817_094630.log
-└── ...
+# Build server image
+bin/docker-build-srvr.sh
 
-# Coverage reports in  
-./coverage/
-├── server_coverage_20250817_094512.html
-├── worker_coverage_20250817_094630/
-└── ...
+# Run server in container
+docker run -e IKB_ODOO_ADMIN_PASSWORD="admin" -it sunray-srvr18:latest
 ```
 
-### Continuous Integration
+## 📚 Documentation
 
-For CI/CD pipelines, use the scripts with appropriate flags:
+- [CLAUDE.md](./CLAUDE.md) - Complete development guide
+- [docs/specs/](./docs/specs/) - Technical specifications
+- [API_CONTRACT.md](./API_CONTRACT.md) - API specification for workers
 
-```yaml
-# GitHub Actions example
-- name: Test Server
-  run: ./test_server.sh --coverage --stop-on-fail
+## 🤝 Contributing
 
-- name: Test Worker  
-  run: ./test_worker.sh --coverage --bail
-```
-
-### Troubleshooting
-
-#### Common Issues
-
-**Server Tests Failing**:
-```bash
-# Check database connection
-bin/sunray-srvr --help
-
-# Verify addon installation
-bin/sunray-srvr -i sunray_core --stop-after-init
-
-# Clean test with fresh database
-./test_server.sh --clean --verbose
-```
-
-**Worker Tests Failing**:
-```bash
-# Verify Node.js version
-node --version  # Should be 20.x
-
-# Check dependencies
-./test_worker.sh --check-env
-
-# Reinstall dependencies
-cd sunray_worker && rm -rf node_modules && npm install
-```
-
-**Database Constraint Errors**:
-These are often expected validation tests. Look for:
-- `ERREUR: la nouvelle ligne de la relation « sunray_webhook_token » viole la contrainte`
-- These prove our validation logic is working correctly
-
-### Performance Benchmarks
-
-Test execution times on typical development machine:
-- **Server tests**: ~10 seconds (32 tests)
-- **Worker tests**: ~2 seconds (15+ tests)  
-- **Coverage generation**: Additional ~5 seconds each
-
-### Test Development
-
-When adding new tests:
-
-**Server (Python/Odoo)**:
-- Place in `sunray_server/sunray_core/tests/`
-- Follow pattern: `test_feature_name.py`
-- Extend `TransactionCase` for database tests
-- Import in `tests/__init__.py`
-
-**Worker (JavaScript/Vitest)**:
-- Place in `sunray_worker/src/`
-- Follow pattern: `feature.test.js`
-- Use Vitest API: `describe()`, `test()`, `expect()`
-- Mock Cloudflare Worker APIs as needed
-
-## 🛟 Support
-
-- Check [CLAUDE.md](CLAUDE.md) for development guidelines
-- Report issues at GitHub Issues
-- See `.claude.local.md` for environment-specific configuration (not in repo)
-
-## 🚧 TODOs
-
-### KV Namespace Creation Documentation
-The following Cloudflare KV namespaces need to be created for the Worker:
-- `SESSIONS` - Store user session data
-- `CHALLENGES` - Store WebAuthn challenges
-- `CONFIG_CACHE` - Cache configuration from server
-- `CONTROL_SIGNALS` - Cache invalidation signals
-
-Use `./sunray_worker/deploy.sh` option 3 to create all namespaces automatically.
-
-**Note**: KV cache refresh delays are defined by Cloudflare (60s all Tiers)
+1. Ensure server API changes are backward compatible
+2. Update API_CONTRACT.md for any API changes
+3. Test with multiple worker implementations
+4. Run comprehensive test suite before submitting
 
 ## 📄 License
 
-MIT - Designed to be forked, adapted, and improved.
+[Your License Here]
 
 ---
 
-**Note**: This is the transition from ED25519 signatures to WebAuthn/Passkeys. The Chrome Extension mentioned in old docs has been replaced by native passkey support.
+**Note**: This is the server component of the Sunray ecosystem. For edge workers, see the respective worker repositories listed above.

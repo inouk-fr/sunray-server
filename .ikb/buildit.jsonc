@@ -1,0 +1,162 @@
+{
+    "buildit": {
+        "//running-env-root-path": "../buildit-running-env",
+        "buildit-plugins": {
+            "plugin": "inouk.buildit.git_checkout",
+            "repositories": {
+                "core-buildit-plugins": {
+                    "repository": "https://gitlab.com/inouk/ikb.git",
+                    "directory": "ikb",
+                    "//refspec": null,
+                    "update": true
+                }
+            }
+        },
+        "ENV": {
+            "plugin": "ikb.environ"
+        },
+        "py3x": {
+            "plugin": "ikb.virtualenv",
+            "name": "py3x",
+            "interpreter": "python3"
+        },
+        "odoo": {
+            "plugin": "ikb.odoo",
+            "python": "${py3x}",
+            "launcher_name": "sunray-srvr",
+            "install_into": "/usr/local/bin/",
+            "major_version": "18",
+            "version": {
+                "type": "git",
+                "repository": "https://github.com/odoo/odoo.git",
+                "directory": "parts/odoo18",
+                "branch": "18.0",
+                "refspec": "18.0",
+                "depth": 5
+            },
+            "requirements": {
+                "requirements_file": "project_addons/requirements.txt",
+                "options": {
+                    "no-deps": false
+                },
+                "eggs": {
+                    "python-stdnum": "1.17"
+                }
+            },
+            "addons": {
+                "project_addons": {
+                    "install": true,
+                    "type": "local",
+                    "root_folder": null,
+                    "path": "./project_addons"
+                },
+                "enterprise": {
+                    "install": false,
+                    "type": "git",
+                    "repository": "https://${ENV:MPY_GITHUB_ODOO_TOKEN_URL_AUTH}github.com/odoo/enterprise.git",
+                    "directory": "parts/enterprise",
+                    "refspec": "18.0"
+                },
+                "inouk_odoo_pg_health_check": {
+                    "install": false,
+                    "type": "git",
+                    "repository": "https://gitlab.com/inouk/inouk_odoo_pg_health_check.git",
+                    "directory": "inouk_odoo_pg_health_check",
+                    "refspec": "14.0",
+                    "group": "parts/inouk_addons/"
+                },
+                "inouk_core": {
+                    "install": false,
+                    "type": "git",
+                    "repository": "https://gitlab.com/cmorisse/inouk_core.git",
+                    "directory": "inouk_core",
+                    "refspec": "16.0",
+                    "group": "parts/inouk_addons"
+                },
+                "inouk_api_auth": {
+                    "install": false,
+                    "type": "git",
+                    "repository": "https://github.com/cmorisse/inouk_api_auth.git",
+                    "directory": "inouk_api_auth",
+                    "refspec": "13.0",
+                    "group": "parts/inouk_addons"
+                },
+                "inouk_session_store": {
+                    "install": false,
+                    "server_wide": true,
+                    "type": "git",
+                    "repository": "https://github.com/cmorisse/inouk_session_store.git",
+                    "directory": "inouk_session_store",
+                    "refspec": "14.0",
+                    "group": "parts/inouk_addons"
+                },
+                "inouk_attachments_storage": {
+                    "install": false,
+                    "type": "git",
+                    "repository": "https://github.com/cmorisse/inouk_attachments_storage.git",
+                    "directory": "inouk_attachments_storage",
+                    "refspec": "13.0",
+                    "group": "parts/inouk_addons"
+                },
+                "inouk_message_queue": {
+                    "install": false,
+                    "type": "git",
+                    "repository": "https://gitlab.com/cmorisse/inouk_message_queue.git",
+                    "directory": "inouk_message_queue",
+                    "#refspec": "14.0",
+                    "refspec": "cmo_pg_queue",
+                    "group": "parts/inouk_addons"
+                },
+                "inouk_server_detect": {
+                    "install": false,
+                    "type": "git",
+                    "repository": "https://gitlab.com/cmorisse/inouk_server_detect.git",
+                    "directory": "inouk_server_detect",
+                    "refspec": "14.0",
+                    "group": "parts/inouk_addons"
+                },
+                "inouk_odoo_data_migration_toolkit": {
+                    "install": false,
+                    "type": "git",
+                    "comment": "Only available as a private repository",
+                    "repository": "https://${ENV:MPY_DEPS_GIT_TOKEN_URL_AUTH}gitlab.com/cmorisse/inouk_odoo_data_migration_toolkit.git",
+                    "directory": "inouk_odoo_data_migration_toolkit",
+                    "refspec": "12.0",
+                    "group": "parts/inouk_addons"
+                },
+                "inouk_odoo_cli": {
+                    "install": true,
+                    "type": "git",
+                    "repository": "https://gitlab.com/cmorisse/inouk_odoo_cli.git",
+                    "directory": "inouk_odoo_cli",
+                    "refspec": "18.0",
+                    "group": "parts/inouk_addons/"
+                }
+            },
+            "config": {
+                "options": {
+                    "admin_passwd": "${ENV:IKB_ODOO_ADMIN_PASSWORD}",
+                    "db_maxconn": 256,
+                    "list_db": false,
+                    "unaccent": false,
+                    "proxy_mode": true,
+                    "http_interface": "0.0.0.0",
+                    "limit_time_cpu": 360,
+                    "limit_time_real": 720,
+                    "limit_time_real_cron": 0,
+                    "limit_request": 8192,
+                    "max_cron_threads": 2,
+                    "log_handler": ":INFO,IMQWorker:INFO",
+                    "log_db": false,
+                    "log_db_level": "warning",
+                    "http_port": 8069,
+                    "longpolling_port": 8072,
+                    "db_sslmode": "prefer",
+                    "limit_memory_hard": 4684354560,
+                    "limit_memory_soft": 4147483648,
+                    "workers": 1
+                }
+            }
+        }
+    }
+}

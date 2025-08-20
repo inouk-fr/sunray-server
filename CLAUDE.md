@@ -6,16 +6,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Muppy Sunray is a lightweight, secure, self-hosted solution for authorizing HTTP access to private cloud services without VPN or fixed IPs. The project integrates with Cloudflare's infrastructure to provide enterprise-grade security at a fraction of traditional costs.
 
+### Architecture: Server-Centric Design
+
+**Sunray Server** provides a rich, comprehensive API that handles ALL business logic. Workers are thin translation layers that adapt platform-specific requests to the server's universal API.
+
 ### Main Components
 
-1. **Sunray Worker aka Sunray Cloudflare Worker**: Cloudflare Route Workers in charge of edge authentication using WebAuthn/Passkeys
-2. **Sunray Server (Odoo 18 Addon)**: Admin interface and configuration management
-3. **Sunray CLI (part of Sunray Server)**: An odoo CLI to manage Sunray server's compnents
+1. **Sunray Server (Odoo 18 Addon)**: Core authentication server with complete business logic
+   - Admin interface and configuration management 
+   - Rich REST API for all worker types
+   - WebAuthn/Passkeys, access rules, session management
+   - Universal backend supporting multiple worker implementations
+
+2. **Sunray Workers**: Thin platform-specific adapters
+   - **inouk-sunray-worker-cloudflare**: Cloudflare Workers implementation 
+   - **inouk-sunray-worker-k8s**: Kubernetes ForwardAuth implementation (future)
+   - Each worker translates platform requests to server API calls
+
+3. **Sunray CLI (part of Sunray Server)**: An odoo CLI to manage Sunray server's components
 4. **Protected Hosts**: Web sites/app to protect
 
 ## Environment Configuration
 
 **Note**: Sensitive environment-specific information (URLs, API keys, credentials) should be stored in `.claude.local.md` which is not committed to the repository. Create this file locally with your specific environment details.
+
+### Security Notes
+- The environment variable `$MPY_REPO_GIT_TOKEN` contains a valid GitLab token
+- **NEVER** write the actual token value in any documentation or logs
+- The token can be used in tool commands for authenticated Git operations
 
 ### URL Structure
 - **Sunray Server (Admin)**: The Odoo 18 server with sunray_core addon
@@ -30,15 +48,14 @@ Muppy Sunray is a lightweight, secure, self-hosted solution for authorizing HTTP
   - Configured as hosts in Sunray Server
   - Users must authenticate via Worker to access
 
-## Project Structure
+## Repository Structure
 
+Sunray is organized as separate repositories following a server-centric architecture:
+
+### inouk-sunray-server (this repository)
 ```
 /opt/muppy/appserver-sunray18/
-├── sunray_worker/             # Cloudflare Worker
-│   ├── src/                   # Worker source code
-│   ├── wrangler.toml          # Cloudflare configuration
-│   └── package.json           # Node dependencies
-├── sunray_server/             # Odoo 18 addons
+├── project_addons/            # Odoo 18 addons (ikb standard)
 │   ├── sunray_core/           # Free edition addon
 │   │   ├── __manifest__.py
 │   │   ├── models/
@@ -46,7 +63,6 @@ Muppy Sunray is a lightweight, secure, self-hosted solution for authorizing HTTP
 │   │   ├── views/
 │   │   └── security/
 │   └── sunray_enterprise/     # Advanced edition addon (future)
-├── demo-app/                  # Demo application (to be created)
 ├── docs/                      # Documentation
 │   ├── specs/                 # Technical specifications
 │   ├── market_analysis_pricing_comparison.md
@@ -58,6 +74,21 @@ Muppy Sunray is a lightweight, secure, self-hosted solution for authorizing HTTP
 └── etc/                       # Configuration files
     └── odoo.buildit.cfg       # Generated Odoo config
 ```
+
+### inouk-sunray-worker-cloudflare (separate repository)
+```
+inouk-sunray-worker-cloudflare/
+├── src/                       # Worker source code
+├── wrangler.toml              # Cloudflare configuration
+├── package.json               # Node dependencies
+├── deploy.sh                  # Deployment script
+└── README.md                  # Cloudflare-specific docs
+```
+
+### Future Workers
+- `inouk-sunray-worker-k8s`: Kubernetes ForwardAuth implementation
+- `inouk-sunray-worker-nginx`: NGINX auth_request implementation
+- `inouk-sunray-worker-traefik`: Traefik ForwardAuth implementation
 
 ## Development Commands
 
@@ -78,9 +109,9 @@ npm install -g wrangler
 ikb install   # Processes buildit.json[c] and requirements.txt
 
 # Python dependencies for Sunray modules
-# Requirements are automatically processed by ikb from sunray_server/requirements.txt
+# Requirements are automatically processed by ikb from project_addons/requirements.txt
 # The path is configured in .ikb/buildit.jsonc at odoo.requirements.requirements_file
-cd sunray_server/
+cd project_addons/
 cat > requirements.txt << EOF
 pyotp>=2.8.0
 qrcode[pil]>=7.4.0
@@ -132,9 +163,12 @@ bin/sunray-srvr --database=${TESTDB} -i sunray_core
 
 ### Worker Development
 
+Workers are now in separate repositories. For Cloudflare Worker:
+
 ```bash
-# Navigate to worker directory
-cd sunray_worker/
+# Clone the worker repository
+git clone https://gitlab.com/cmorisse/inouk-sunray-worker-cloudflare.git
+cd inouk-sunray-worker-cloudflare/
 
 # Install dependencies
 npm install
