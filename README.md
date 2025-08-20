@@ -97,9 +97,9 @@ bin/sunray-srvr --dev=all
 bin/sunray-srvr -u sunray_core
 
 # Run server tests
-./test_server.sh
-./test_server.sh --test TestAccessRules  # Specific test class
-./test_server.sh --coverage --verbose    # With coverage
+bin/test_server.sh
+bin/test_server.sh --test TestAccessRules  # Specific test class
+bin/test_server.sh --coverage --verbose    # With coverage
 ```
 
 ### Sunray CLI (srctl)
@@ -140,16 +140,16 @@ See [API_CONTRACT.md](./API_CONTRACT.md) for complete API specification.
 
 ```bash
 # Run all server tests with comprehensive reporting
-./test_server.sh
+bin/test_server.sh
 
 # Run specific test class
-./test_server.sh --test TestAccessRules
+bin/test_server.sh --test TestAccessRules
 
 # Full test run with coverage
-./test_server.sh --coverage --verbose
+bin/test_server.sh --coverage --verbose
 
 # List all available test classes
-./test_server.sh --list-tests
+bin/test_server.sh --list-tests
 ```
 
 ## 🐳 Docker

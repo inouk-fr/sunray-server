@@ -141,9 +141,9 @@ bin/sunray-srvr -i sunray_core               # Install sunray_core module
 # NEVER run bin/sunray-srvr --test-enable directly
 # ALWAYS use the test launcher scripts at repository root:
 
-./test_server.sh                           # Run all server tests with comprehensive reporting
-./test_server.sh --test TestAccessRules    # Run specific Access Rules tests
-./test_server.sh --coverage --verbose      # Full test run with coverage
+bin/test_server.sh                           # Run all server tests with comprehensive reporting
+bin/test_server.sh --test TestAccessRules    # Run specific Access Rules tests
+bin/test_server.sh --coverage --verbose      # Full test run with coverage
 ./test_worker.sh                           # Run all worker tests
 ./test_worker.sh --coverage                # Worker tests with coverage report
 ./test_worker.sh --watch                   # Interactive development mode
@@ -473,22 +473,22 @@ def test_webhook(self, mock_post):
 
 Two comprehensive test runners are available for both server and worker components:
 
-#### Server Tests (`./test_server.sh`)
+#### Server Tests (`bin/test_server.sh`)
 ```bash
 # Run all Sunray server tests
-./test_server.sh
+bin/test_server.sh
 
 # Run specific test class (Access Rules, Webhook Tokens, etc.)
-./test_server.sh --test TestAccessRules
+bin/test_server.sh --test TestAccessRules
 
 # Clean database run with coverage reporting
-./test_server.sh --clean --coverage --verbose
+bin/test_server.sh --clean --coverage --verbose
 
 # List all available test classes and methods
-./test_server.sh --list-tests
+bin/test_server.sh --list-tests
 
 # Run specific test method
-./test_server.sh --test TestAccessRules --method test_priority_ordering
+bin/test_server.sh --test TestAccessRules --method test_priority_ordering
 ```
 
 #### Worker Tests (`./test_worker.sh`)
