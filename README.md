@@ -134,7 +134,7 @@ The server provides a comprehensive REST API at `/sunray-srvr/v1/*`:
 - `/sessions/validate` - Validate sessions
 - `/audit` - Record audit events
 
-See [API_CONTRACT.md](./API_CONTRACT.md) for complete API specification.
+See [API_CONTRACT.md](./docs/API_CONTRACT.md) for complete API specification.
 
 ## 🧪 Testing
 
@@ -166,12 +166,12 @@ docker run -e IKB_ODOO_ADMIN_PASSWORD="admin" -it sunray-srvr18:latest
 
 - [CLAUDE.md](./CLAUDE.md) - Complete development guide
 - [docs/specs/](./docs/specs/) - Technical specifications
-- [API_CONTRACT.md](./API_CONTRACT.md) - API specification for workers
+- [API_CONTRACT.md](./docs/API_CONTRACT.md) - API specification for workers
 
 ## 🤝 Contributing
 
 1. Ensure server API changes are backward compatible
-2. Update API_CONTRACT.md for any API changes
+2. Update docs/API_CONTRACT.md for any API changes
 3. Test with multiple worker implementations
 4. Run comprehensive test suite before submitting
 

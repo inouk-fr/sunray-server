@@ -1,5 +1,25 @@
 # Cloudflared Setup Instructions
 
+## Step 0: Install Cloudflared
+
+Download and install cloudflared:
+```bash
+# Download latest cloudflared for Linux AMD64
+curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+
+# Install the package
+sudo dpkg -i cloudflared.deb
+
+# Verify installation
+cloudflared --version
+
+# Clean up
+rm cloudflared.deb
+```
+
+Alternatively, download from the official releases page:
+https://github.com/cloudflare/cloudflared/releases
+
 ## Step 1: Authenticate with Cloudflare
 
 Run this command and open the URL in your browser:
@@ -83,7 +103,7 @@ Action: Block
 
 ## Current Status
 
-- [x] Cloudflared installed
+- [ ] Cloudflared installed (download from GitHub releases)
 - [ ] Authenticated with Cloudflare (need browser access)
 - [ ] Named tunnel created
 - [ ] DNS configured
