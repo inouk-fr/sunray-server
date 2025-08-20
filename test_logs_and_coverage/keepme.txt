@@ -1,0 +1,6 @@
+# This file ensures the test_logs_and_coverage directory is tracked in git
+# All other files in this directory are ignored via .gitignore
+# This directory contains:
+# - Test execution logs (*.log files)  
+# - Coverage reports (*.html files)
+# - Coverage data directories (htmlcov/)

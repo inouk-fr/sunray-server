@@ -46,8 +46,8 @@ debug.yml
 bin/start_odoo
 
 # Server-specific ignores
-test_logs/*.log
-coverage/
+test_logs_and_coverage/*
+!test_logs_and_coverage/keepme.txt
 
 # Local environment configuration
 .claude.local.md

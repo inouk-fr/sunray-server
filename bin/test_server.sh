@@ -16,8 +16,8 @@ NC='\033[0m' # No Color
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-LOG_DIR="${PROJECT_ROOT}/test_logs"
-COVERAGE_DIR="${PROJECT_ROOT}/coverage"
+LOG_DIR="${PROJECT_ROOT}/test_logs_and_coverage"
+COVERAGE_DIR="${PROJECT_ROOT}/test_logs_and_coverage"
 DEFAULT_MODULE="sunray_core"
 
 # Default options
@@ -290,7 +290,7 @@ generate_coverage() {
 pip install coverage
 # Run tests with coverage
 coverage run --source=project_addons bin/sunray-srvr --test-enable --stop-after-init -u sunray_core
-coverage html -d ${COVERAGE_DIR}/htmlcov
+coverage html -d ${PROJECT_ROOT}/test_logs_and_coverage/htmlcov
     </pre>
 </body>
 </html>
@@ -381,10 +381,7 @@ main() {
     # Final summary
     echo ""
     print_header "Test Session Complete"
-    echo "Logs directory: $LOG_DIR"
-    if [[ "$COVERAGE" == "true" ]]; then
-        echo "Coverage directory: $COVERAGE_DIR"
-    fi
+    echo "Test outputs directory: ${PROJECT_ROOT}/test_logs_and_coverage"
     
     if [[ $exit_code -eq 0 ]]; then
         print_msg $GREEN "🎉 Test session completed successfully!"
