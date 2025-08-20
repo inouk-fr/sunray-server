@@ -43,6 +43,7 @@ else
     NORMALIZED_VERSION=""
 fi
 
+echo "Sunray Server Ver. : ${SUNRAYSRVR_MAIN_VERSION}"
 echo "Current Dir.       : $(pwd)"
 echo "Current Tag        : ${CURRENT_GIT_TAG}"
 echo "Branch.            : ${BRANCH_NAME}"
@@ -54,7 +55,7 @@ echo "Push image         : ${PUSH_IMAGE}"
 CI_COMMIT_REF_NAME=$BRANCH_NAME
 echo "docker build --build-arg MPY_REPO_GIT_TOKEN=$MPY_REPO_GIT_TOKEN --build-arg MPY_REPO_GIT_TOKEN_URL_AUTH=$MPY_REPO_GIT_TOKEN_URL_AUTH --build-arg BRANCH_NAME=$CI_COMMIT_REF_NAME \
  --build-arg IKB_ODOO_ADMIN_PASSWORD=$IKB_ODOO_ADMIN_PASSWORD --pull $NO_CACHE_OPT --progress=$PROGRESS_OPT \
- --rm -f "./project_addons/Dockerfile" -t sunray-srvr$SUNRAYSRVR_MAIN_VERSION:latest . "
+ --rm -f "./Dockerfile" -t sunray-srvr$SUNRAYSRVR_MAIN_VERSION:latest . "
 
 read -p "Press [Enter] key to start build or CTRL-C to abort..."
 
@@ -66,7 +67,7 @@ docker build \
      --pull \
      $NO_CACHE_OPT  \
      --progress=$PROGRESS_OPT \
-     --rm -f "./project_addons/Dockerfile" -t sunray-srvr$SUNRAYSRVR_MAIN_VERSION:latest . 
+     --rm -f "./Dockerfile" -t sunray-srvr$SUNRAYSRVR_MAIN_VERSION:latest . 
 
 
 # docker va produire une image en local

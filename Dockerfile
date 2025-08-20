@@ -132,10 +132,7 @@ RUN rm -rf /opt/muppy/sunray \
 # We copy buildit.jsonc to repo root to support multi repo
 WORKDIR /opt/muppy/sunray
 COPY --chown=$USERNAME:$USERNAME .ikb/buildit.jsonc /opt/muppy/sunray
-#COPY --chown=$USERNAME:$USERNAME .ikb/buildit.jsonc /opt/muppy/sunray/sunray_server
-#RUN /home/muppy/.local/bin/ikb init && /home/muppy/.local/bin/ikb install 
 RUN ikb init && ikb install 
-
 
 # Entrypoint management
 # See: https://code.visualstudio.com/remote/advancedcontainers/start-processes
