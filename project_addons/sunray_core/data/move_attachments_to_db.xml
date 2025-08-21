@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<odoo>
+    <data noupdate="1"> 
+        <function model="ir.attachment" name="initial_move_all_attachments_to_storage">
+            <value eval="'db'" />
+        </function>
+    </data>
+</odoo>
