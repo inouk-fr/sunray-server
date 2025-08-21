@@ -73,16 +73,17 @@ docker build \
 # docker va produire une image en local
 # qu'il faut tagger pour pouvoir la pousser dans la registry.
 # Les lignes vont pousser l'image
-docker tag sunray-srvr$SUNRAYSRVR_MAIN_VERSION:latest registry.gitlab.com/cmorisse/inouk_sunray/sunray-srvr$SUNRAYSRVR_MAIN_VERSION:latest 
+docker tag sunray-srvr$SUNRAYSRVR_MAIN_VERSION:latest registry.gitlab.com/cmorisse/inouk-sunray-server/sunray-srvr$SUNRAYSRVR_MAIN_VERSION:latest 
 if [ "$PUSH_IMAGE" == "Yes" ]; then
-    docker push registry.gitlab.com/cmorisse/inouk_sunray/sunray-srvr$SUNRAYSRVR_MAIN_VERSION:latest
+    echo "docker push registry.gitlab.com/cmorisse/inouk-sunray-server/sunray-srvr$SUNRAYSRVR_MAIN_VERSION:latest"
+    docker push registry.gitlab.com/cmorisse/inouk-sunray-server/sunray-srvr$SUNRAYSRVR_MAIN_VERSION:latest
     sleep 10s
 fi
 
 if [ -n "$CURRENT_GIT_TAG" ]; then
-    docker tag sunray-srvr$SUNRAYSRVR_MAIN_VERSION:latest registry.gitlab.com/cmorisse/inouk_sunray/sunray-srvr$SUNRAYSRVR_MAIN_VERSION:$CURRENT_GIT_TAG 
+    docker tag sunray-srvr$SUNRAYSRVR_MAIN_VERSION:latest registry.gitlab.com/cmorisse/inouk-sunray-server/sunray-srvr$SUNRAYSRVR_MAIN_VERSION:$CURRENT_GIT_TAG 
     if [ "$PUSH_IMAGE" == "Yes" ]; then
-        docker push registry.gitlab.com/cmorisse/inouk_sunray/sunray-srvr$SUNRAYSRVR_MAIN_VERSION:$CURRENT_GIT_TAG
+        docker push registry.gitlab.com/cmorisse/inouk-sunray-server/sunray-srvr$SUNRAYSRVR_MAIN_VERSION:$CURRENT_GIT_TAG
     fi
 else
     echo "CURRENT_GIT_TAG is undefined. Nothing to push in repository."
