@@ -80,13 +80,13 @@ mpy_meta_config:
             memory: 1536M
     workers:
       type: worker
-      dashboard_name: Workers
+      dashboard_name: IMQ Workers
       deployment: # !required
         args:
         - imqworker
         - --queues=*
         - --max-messages=2000
-        - --workers=1
+        - --observability-port=8000 
         env_vars:
         resources:
           requests:
@@ -106,12 +106,6 @@ mpy_meta_config:
 
   # here are the volumes definition
   volumesDefinition:
-    - name: tailscale-data            # [REQUIRED]
-      description: All Data           # [Optional]
-      claim:                          # [REQUIRED]
-        #storageClassName: emptyDir    # [OPTIONAL] default is values.default_storage_class (eg. microk8s-hostpath)
-        #accessModes: ReadWriteOnce   # [OPTIONAL] Kubernetes Access Modes / default is ReadWriteOnce
-        size: 1Mi                     # [REQUIRED]
   
   vault_objects:
     - name: muppy-run-env
