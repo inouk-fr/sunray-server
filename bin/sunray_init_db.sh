@@ -35,7 +35,7 @@ echo -e "\n"
 # - IKB_EMAIL_FROM
 
 
-bin/sunray-srvr setupcompany --name="$MPY_USERINIT_USER_COMPANY" \
+bin/sunray-srvr setup-company --name="$MPY_USERINIT_USER_COMPANY" \
     --email=$IKB_SMTP_USER \
     --website="https://gitlab.com/cmorisse/inouk-sunray-server" \
     --base-url=$APP_PRIMARY_URL \
@@ -45,15 +45,15 @@ bin/sunray-srvr setupcompany --name="$MPY_USERINIT_USER_COMPANY" \
 # We check if password is set, if not, we will send a signup email
 if [ -z "$MPY_USERINIT_USER_PASSWORD" ]; then
     echo "No password set, signup email will be sent to $MPY_USERINIT_USER_EMAIL"
-    bin/sunray-srvr setupuser --external-id=muppy_core.main_user \
+    bin/sunray-srvr setup-user --external-id=muppy_core.main_user \
         --login=$MPY_USERINIT_USER_EMAIL \
         --name="$MPY_USERINIT_USER_NAME"
-    bin/sunray-srvr sendsignupemail --login=$MPY_USERINIT_USER_EMAIL --create-user
-    bin/sunray-srvr getsignupurl --login=$MPY_USERINIT_USER_EMAIL
+    bin/sunray-srvr send-signup-email --login=$MPY_USERINIT_USER_EMAIL --create-user
+    bin/sunray-srvr get-signup-url --login=$MPY_USERINIT_USER_EMAIL
 
 else
     echo "Creating user $MPY_USERINIT_USER_EMAIL from supplied password and TOTP secret."
-    bin/sunray-srvr setupuser --external-id=muppy_core.main_user \
+    bin/sunray-srvr setup-user --external-id=muppy_core.main_user \
         --login=$MPY_USERINIT_USER_EMAIL \
         --name="$MPY_USERINIT_USER_NAME" \
         --password=$MPY_USERINIT_USER_PASSWORD

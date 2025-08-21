@@ -108,7 +108,7 @@ mpy_meta_config:
   volumesDefinition:
   
   vault_objects:
-    - name: muppy-run-env
+    - name: sunray-run-env
       scope: qualifier
       type: secret     
       default_values:
