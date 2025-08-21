@@ -30,8 +30,11 @@ Technical Components:
     'author': 'Muppy',
     'website': 'https://github.com/muppy/sunray',
     'license': 'LGPL-3',
-    'depends': ['base', 'web'],
+    'depends': ['base', 'web', 'inouk_attachments_storage'],
     'data': [
+        # Inouk Attachment Storage
+        'data/move_attachments_to_db.xml',
+
         # Security
         'security/sunray_security.xml',
         'security/ir.model.access.csv',
