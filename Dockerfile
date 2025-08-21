@@ -125,20 +125,20 @@ RUN mkdir -p $IKB_SRC_DIR \
 #
 WORKDIR /opt/muppy/
 RUN rm -rf /opt/muppy/sunray \
-    && git clone --branch=${BRANCH_NAME} --depth=1 https://${MPY_REPO_GIT_TOKEN_URL_AUTH}gitlab.com/cmorisse/inouk_sunray.git /opt/muppy/sunray
+    && git clone --branch=${BRANCH_NAME} --depth=1 https://${MPY_REPO_GIT_TOKEN_URL_AUTH}gitlab.com/cmorisse/inouk-sunray-server.git /opt/muppy/appserver-sunray
 
 #
 # launch buildit
 # We copy buildit.jsonc to repo root to support multi repo
-WORKDIR /opt/muppy/sunray
-COPY --chown=$USERNAME:$USERNAME .ikb/buildit.jsonc /opt/muppy/sunray
+WORKDIR /opt/muppy/appserver-sunray
+COPY --chown=$USERNAME:$USERNAME .ikb/buildit.jsonc /opt/muppy/appserver-sunray/
 RUN ikb init && ikb install 
 
 # Entrypoint management
 # See: https://code.visualstudio.com/remote/advancedcontainers/start-processes
 #COPY mkrds-entrypoint.sh /usr/local/bin/mkrds-entrypoint.sh
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["/opt/muppy/sunray/sunray_server/bin/sunray-srvr"]
+CMD ["/opt/muppy/appserver-sunray/bin/sunray-srvr"]
 #CMD ["sleep", "infinity"]
 
 EXPOSE 8069/tcp
