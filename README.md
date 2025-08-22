@@ -94,9 +94,9 @@ inouk-sunray-server/
 ├── config/                    # Configuration examples
 ├── schema/                    # JSON Schema validation
 ├── bin/                       # Executable scripts
-│   ├── sunray-srvr           # Odoo launcher script
-│   ├── test_server.sh        # Internal Odoo test runner
-│   └── test_rest_api.sh      # External REST API tester
+│   ├── sunray-srvr            # Odoo launcher script
+│   ├── test_server.sh         # Internal Odoo test runner
+│   └── test_rest_api.sh       # External REST API tester
 └── etc/                       # Configuration files
 ```
 
