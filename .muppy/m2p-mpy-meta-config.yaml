@@ -4,6 +4,7 @@ mpy_meta_config:
       type: server
       dashboard_name: Sunray Server / API
       deployment: # !required
+        command: [ 'bin/sunray-srvr' ]
         args:
         - --max-cron-threads=4
         - --workers=4
@@ -26,7 +27,6 @@ mpy_meta_config:
         limits:
           cpu: 0.5
           memory: 1280M
-
       ports:
       - name: odoo
         port: 8069
@@ -82,6 +82,7 @@ mpy_meta_config:
       type: worker
       dashboard_name: IMQ Workers
       deployment: # !required
+        command: [ 'bin/sunray-srvr' ]
         args:
         - imqworker
         - --queues=*
