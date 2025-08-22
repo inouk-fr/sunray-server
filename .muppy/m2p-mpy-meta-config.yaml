@@ -84,7 +84,7 @@ mpy_meta_config:
       deployment: # !required
         command: [ 'bin/sunray-srvr' ]
         args:
-        - imqworker
+        - imq-worker
         - --queues=*
         - --max-messages=2000
         - --observability-port=8000 
