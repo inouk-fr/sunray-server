@@ -70,9 +70,9 @@ Sunray is organized as separate repositories following a server-centric architec
 ├── config/                    # Configuration examples
 ├── schema/                    # JSON Schema validation
 ├── bin/                       # Executable scripts (all project tools & utilities)
-│   ├── sunray-srvr           # Odoo launcher script
-│   ├── test_server.sh        # Internal Odoo test runner
-│   └── test_rest_api.sh      # External REST API tester
+│   ├── sunray-srvr            # Odoo launcher script
+│   ├── test_server.sh         # Internal Odoo test runner
+│   └── test_rest_api.sh       # External REST API tester
 └── etc/                       # Configuration files
     └── odoo.buildit.cfg       # Generated Odoo config
 ```
@@ -111,9 +111,9 @@ npm install -g wrangler
 ikb install   # Processes buildit.json[c] and requirements.txt
 
 # Python dependencies for Sunray modules
-# Requirements are automatically processed by ikb from project_addons/requirements.txt
+# Requirements are automatically processed by ikb from user_addons/requirements.txt
 # The path is configured in .ikb/buildit.jsonc at odoo.requirements.requirements_file
-cd project_addons/
+cd user_addons/
 cat > requirements.txt << EOF
 pyotp>=2.8.0
 qrcode[pil]>=7.4.0
@@ -611,7 +611,7 @@ Host Configuration:
 
 ### Build Configuration
 - `.ikb/buildit.jsonc`: ikb configuration file
-  - `odoo.addons.project_addons`: Points to `./sunray_server` for addon discovery
+  - `odoo.addons.project_addons`: Points to `./project_addons` for addon discovery
   - `odoo.requirements.requirements_file`: Points to `sunray_server/requirements.txt` for Python dependencies
 - `sunray_server/requirements.txt`: Python dependencies automatically processed by ikb install
 - `wrangler.toml`: Cloudflare Worker configuration
