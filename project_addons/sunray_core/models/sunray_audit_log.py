@@ -19,22 +19,44 @@ class SunrayAuditLog(models.Model):
         string='Timestamp'
     )
     event_type = fields.Selection([
+        # Authentication Events
         ('auth.success', 'Authentication Success'),
         ('auth.failure', 'Authentication Failure'),
+        # Token Management Events
         ('token.generated', 'Token Generated'),
         ('token.consumed', 'Token Consumed'),
         ('token.cleanup', 'Token Cleanup'),
+        # Passkey Events
         ('passkey.registered', 'Passkey Registered'),
         ('passkey.revoked', 'Passkey Revoked'),
+        # Configuration Events
         ('config.fetched', 'Config Fetched'),
         ('config.session_duration_changed', 'Session Duration Changed'),
+        ('config.waf_revalidation_changed', 'WAF Revalidation Changed'),
+        # Session Management Events
         ('session.created', 'Session Created'),
         ('session.revoked', 'Session Revoked'),
         ('session.expired', 'Session Expired'),
+        # Webhook Events
         ('webhook.used', 'Webhook Token Used'),
         ('webhook.regenerated', 'Webhook Token Regenerated'),
+        # API Key Events
         ('api_key.regenerated', 'API Key Regenerated'),
+        # Cache Events
         ('cache_invalidation', 'Cache Invalidation'),
+        # WAF Bypass Events
+        ('waf_bypass.created', 'WAF Bypass Cookie Created'),
+        ('waf_bypass.validated', 'WAF Bypass Validated'),
+        ('waf_bypass.expired', 'WAF Bypass Expired'),
+        ('waf_bypass.cleared', 'WAF Bypass Cleared'),
+        ('waf_bypass.tamper.format', 'WAF Bypass Tamper: Invalid Format'),
+        ('waf_bypass.tamper.hmac', 'WAF Bypass Tamper: HMAC Failed'),
+        ('waf_bypass.tamper.session', 'WAF Bypass Tamper: Session Mismatch'),
+        ('waf_bypass.tamper.ip_change', 'WAF Bypass Tamper: IP Changed'),
+        ('waf_bypass.tamper.ua_change', 'WAF Bypass Tamper: User-Agent Changed'),
+        ('waf_bypass.error', 'WAF Bypass Error'),
+        ('waf_bypass.unknown', 'WAF Bypass Unknown'),
+        # Security Events
         ('security.alert', 'Security Alert'),
         ('SESSION_FINGERPRINT_MISMATCH', 'Session Fingerprint Mismatch'),
         ('SESSION_IP_CHANGED', 'Session IP Changed'),

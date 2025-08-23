@@ -314,6 +314,14 @@ X-API-Key: your_worker_api_key_here
 }
 ```
 
+**Event Types**: For a complete list of supported `event_type` values, refer to the `event_type` field definition in `/project_addons/sunray_core/models/sunray_audit_log.py`. The event types are organized into categories:
+- Authentication Events (e.g., `auth.success`, `auth.failure`)
+- Token Management Events (e.g., `token.generated`, `token.consumed`)
+- Configuration Events (e.g., `config.fetched`, `config.session_duration_changed`)
+- Session Events (e.g., `session.created`, `session.expired`)
+- WAF Bypass Events (e.g., `waf_bypass.created`, `waf_bypass.tamper.*`)
+- Security Events (e.g., `security.alert`, `SESSION_IP_CHANGED`)
+
 **Response**:
 ```json
 {
