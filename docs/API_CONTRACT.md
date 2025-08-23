@@ -22,44 +22,99 @@ X-API-Key: your_worker_api_key_here
 
 ### GET /sunray-srvr/v1/config
 
-**Purpose**: Returns complete configuration including access rules for a host.
-**Usage**: Workers should cache this and use it for local decision making.
+**Purpose**: Returns complete configuration for all hosts and users. Workers fetch and cache this for authentication and authorization decisions.
 
-**Query Parameters**:
-- `host` (required): The host/domain being accessed
+**Query Parameters**: None
 
 **Response**:
 ```json
 {
   "version": 4,
-  "host": "example.com",
-  "exceptions_tree": {
-    "public_patterns": ["/health", "/status"],
-    "cidr_rules": [
-      {
-        "priority": 200,
-        "patterns": ["/admin/*"],
-        "cidrs": ["192.168.1.0/24"]
-      }
-    ],
-    "token_rules": [
-      {
-        "priority": 300,
-        "patterns": ["/api/*", "/webhook/*"],
-        "tokens": [
+  "generated_at": "2024-01-01T12:00:00Z",
+  "config_version": "2024-01-01T12:00:00Z",
+  "host_versions": {
+    "example.com": "2024-01-01T11:55:00Z"
+  },
+  "user_versions": {
+    "user@example.com": "2024-01-01T11:58:00Z"
+  },
+  "users": {
+    "user@example.com": {
+      "email": "user@example.com",
+      "display_name": "User Name",
+      "created_at": "2023-01-01T00:00:00Z",
+      "passkeys": [
+        {
+          "credential_id": "credential_id_base64",
+          "public_key": "public_key_base64",
+          "name": "MacBook Pro",
+          "created_at": "2023-01-01T00:00:00Z",
+          "backup_eligible": true,
+          "backup_state": true
+        }
+      ]
+    }
+  },
+  "hosts": [
+    {
+      "domain": "example.com",
+      "worker_url": "https://sunray-worker.example.workers.dev",
+      "backend": "https://backend.example.com",
+      "authorized_users": ["user@example.com"],
+      "session_duration_override": 28800,
+      "exceptions_tree": {
+        "public_patterns": ["/health", "/status"],
+        "cidr_rules": [
           {
-            "name": "API_Token_1",
-            "header_name": "X-API-Key",
-            "token_source": "header"
+            "priority": 200,
+            "patterns": ["/admin/*"],
+            "cidrs": ["192.168.1.0/24"]
+          }
+        ],
+        "token_rules": [
+          {
+            "priority": 300,
+            "patterns": ["/api/*", "/webhook/*"],
+            "tokens": [
+              {
+                "name": "API_Token_1",
+                "header_name": "X-API-Key",
+                "token_source": "header"
+              }
+            ]
           }
         ]
-      }
-    ]
-  },
-  "default_action": "authenticate",
-  "session_ttl_seconds": 86400
+      },
+      "bypass_waf_for_authenticated": true,
+      "waf_bypass_revalidation_minutes": 15
+    }
+  ]
 }
 ```
+
+**Field Descriptions**:
+- `version`: API version (currently 4 with Access Rules support)
+- `generated_at`: Timestamp when config was generated
+- `config_version`: Global configuration version timestamp
+- `host_versions`: Map of domain to last modification timestamp
+- `user_versions`: Map of recently modified users (last 5 minutes) to modification timestamp
+- `users`: Map of username to user details including passkeys
+- `hosts`: Array of host configurations
+
+**Host Configuration Fields**:
+- `domain`: The protected domain
+- `worker_url`: Worker URL for this host
+- `backend`: Backend service URL to proxy to
+- `authorized_users`: List of usernames allowed access
+- `session_duration_override`: Session duration in seconds (null uses default)
+- `exceptions_tree`: Access rules for public, CIDR, and token-based access
+- `bypass_waf_for_authenticated`: Enable WAF bypass for authenticated users
+- `waf_bypass_revalidation_minutes`: WAF bypass cookie revalidation period
+
+**Version Tracking**:
+- `host_versions` and `user_versions` allow workers to detect configuration changes
+- Workers can use these for cache invalidation strategies
+- Only recently modified users (last 5 minutes) appear in `user_versions`
 
 ### POST /sunray-srvr/v1/setup-tokens/validate
 
@@ -179,7 +234,7 @@ X-API-Key: your_worker_api_key_here
 
 ### POST /sunray-srvr/v1/auth/verify
 
-**Purpose**: Verifies WebAuthn authentication response and creates session.
+**Purpose**: Verifies WebAuthn authentication response (does NOT create session).
 
 **Request Body**:
 ```json
@@ -195,9 +250,9 @@ X-API-Key: your_worker_api_key_here
     },
     "type": "public-key"
   },
-  "host": "example.com",
-  "ip_address": "client_ip",
-  "user_agent": "client_user_agent"
+  "challenge": "base64_challenge",
+  "host_domain": "example.com",
+  "client_ip": "client_ip_address"
 }
 ```
 
@@ -205,9 +260,39 @@ X-API-Key: your_worker_api_key_here
 ```json
 {
   "success": true,
-  "session_id": "new_session_id",
-  "expires_at": "2024-01-01T12:00:00Z",
-  "waf_bypass_cookie": "optional_waf_bypass_data"
+  "user": {
+    "id": 123,
+    "username": "user@example.com",
+    "email": "user@example.com",
+    "display_name": "User Name"
+  }
+}
+```
+
+### POST /sunray-srvr/v1/sessions
+
+**Purpose**: Creates a new session after successful authentication.
+
+**Request Body**:
+```json
+{
+  "session_id": "generated_session_id",
+  "username": "user@example.com",
+  "host_domain": "example.com",
+  "duration": 28800,
+  "credential_id": "credential_id_used",
+  "created_ip": "client_ip",
+  "device_fingerprint": "browser_fingerprint",
+  "user_agent": "Mozilla/5.0...",
+  "csrf_token": "csrf_token_value"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "session_id": "generated_session_id"
 }
 ```
 
