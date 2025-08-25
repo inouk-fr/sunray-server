@@ -12,11 +12,17 @@ This document defines the API that ALL Sunray workers must use. The server provi
 
 ## Authentication
 
-All API requests must include the `X-API-Key` header with a valid worker API key:
+All API requests must include the `Authorization` header with a Bearer token:
 
 ```
-X-API-Key: your_worker_api_key_here
+Authorization: Bearer your_worker_api_key_here
 ```
+
+**Optional Worker Headers**:
+- `X-Worker-ID`: Worker identifier for auto-registration and tracking
+- `X-Worker-Version`: Worker version information
+
+Workers making their first API call will be automatically registered if they include the `X-Worker-ID` header.
 
 ## Core Endpoints
 
@@ -58,7 +64,6 @@ X-API-Key: your_worker_api_key_here
   "hosts": [
     {
       "domain": "example.com",
-      "worker_url": "https://sunray-worker.example.workers.dev",
       "backend": "https://backend.example.com",
       "authorized_users": ["user@example.com"],
       "session_duration_s": 3600,
@@ -86,7 +91,9 @@ X-API-Key: your_worker_api_key_here
         ]
       },
       "bypass_waf_for_authenticated": true,
-      "waf_bypass_revalidation_s": 900
+      "waf_bypass_revalidation_s": 900,
+      "worker_id": 42,
+      "worker_name": "demo-worker-001"
     }
   ]
 }
@@ -103,18 +110,117 @@ X-API-Key: your_worker_api_key_here
 
 **Host Configuration Fields**:
 - `domain`: The protected domain
-- `worker_url`: Worker URL for this host
 - `backend`: Backend service URL to proxy to
 - `authorized_users`: List of usernames allowed access
 - `session_duration_s`: Session duration in seconds (always present, default: 3600)
 - `exceptions_tree`: Access rules for public, CIDR, and token-based access
 - `bypass_waf_for_authenticated`: Enable WAF bypass for authenticated users
 - `waf_bypass_revalidation_s`: WAF bypass cookie revalidation period in seconds (always present, default: 900)
+- `worker_id`: ID of the worker protecting this host (null if not yet bound)
+- `worker_name`: Name of the worker protecting this host (null if not yet bound)
 
 **Version Tracking**:
 - `host_versions` and `user_versions` allow workers to detect configuration changes
 - Workers can use these for cache invalidation strategies
 - Only recently modified users (last 5 minutes) appear in `user_versions`
+
+### POST /sunray-srvr/v1/config/register
+
+**Purpose**: Register worker to a specific host and return host-specific configuration. This endpoint enables automatic worker-host binding and returns only the configuration for the specified host.
+
+**Headers Required**:
+- `Authorization: Bearer your_api_key`
+- `X-Worker-ID: your_worker_name`
+
+**Request Body**:
+```json
+{
+  "hostname": "example.com"
+}
+```
+
+**Response** (Success):
+```json
+{
+  "version": 4,
+  "generated_at": "2024-01-01T12:00:00Z",
+  "worker_id": 42,
+  "worker_name": "demo-worker-001",
+  "host": {
+    "domain": "example.com",
+    "backend": "https://backend.example.com",
+    "authorized_users": ["user@example.com"],
+    "session_duration_s": 3600,
+    "exceptions_tree": {
+      "public_patterns": ["/health", "/status"],
+      "cidr_rules": [
+        {
+          "priority": 200,
+          "patterns": ["/admin/*"],
+          "cidrs": ["192.168.1.0/24"]
+        }
+      ],
+      "token_rules": [
+        {
+          "priority": 300,
+          "patterns": ["/api/*", "/webhook/*"],
+          "tokens": [
+            {
+              "name": "API_Token_1",
+              "header_name": "X-API-Key",
+              "token_source": "header"
+            }
+          ]
+        }
+      ]
+    },
+    "bypass_waf_for_authenticated": true,
+    "waf_bypass_revalidation_s": 900,
+    "config_version": "2024-01-01T11:55:00Z"
+  },
+  "users": {
+    "user@example.com": {
+      "email": "user@example.com",
+      "display_name": "User Name",
+      "created_at": "2023-01-01T00:00:00Z",
+      "passkeys": [
+        {
+          "credential_id": "credential_id_base64",
+          "public_key": "public_key_base64",
+          "name": "MacBook Pro",
+          "created_at": "2023-01-01T00:00:00Z",
+          "backup_eligible": true,
+          "backup_state": true
+        }
+      ]
+    }
+  }
+}
+```
+
+**Response** (Error):
+```json
+{
+  "error": "Worker 'worker-name' not found"
+}
+```
+```json
+{
+  "error": "Host 'hostname' not found"
+}
+```
+```json
+{
+  "error": "Host 'hostname' is already bound to worker 'other-worker'"
+}
+```
+
+**Behavior**:
+1. Auto-registers the worker if not already registered (using X-Worker-ID header)
+2. Binds the worker to the specified host if not already bound
+3. Returns host-specific configuration (only for the requested host)
+4. Returns error if host is already bound to a different worker
+5. Includes only users authorized for the specific host
 
 ### POST /sunray-srvr/v1/setup-tokens/validate
 
