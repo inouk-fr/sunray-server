@@ -211,16 +211,34 @@ Workers making their first API call will be automatically registered if they inc
 ```
 ```json
 {
-  "error": "Host 'hostname' is already bound to worker 'other-worker'"
+  "error": "registration_blocked",
+  "message": "Host is bound to another worker",
+  "details": {
+    "current_worker": "prod-worker-001",
+    "pending_worker": "prod-worker-002",
+    "host": "example.com",
+    "action_required": "Contact administrator for migration approval"
+  },
+  "timestamp": "2024-01-20T10:30:00Z"
 }
 ```
 
 **Behavior**:
 1. Auto-registers the worker if not already registered (using X-Worker-ID header)
-2. Binds the worker to the specified host if not already bound
+2. **Host-Worker Binding Logic**:
+   - **Host has no worker**: Binds worker immediately
+   - **Same worker re-registering**: Idempotent operation (returns configuration)
+   - **Pending worker registering**: Performs migration (replaces current worker)
+   - **Unauthorized worker**: Returns error with migration details
 3. Returns host-specific configuration (only for the requested host)
-4. Returns error if host is already bound to a different worker
-5. Includes only users authorized for the specific host
+4. Includes only users authorized for the specific host
+5. **Migration Support**: Enables controlled worker replacement via pending worker mechanism
+
+**Migration Workflow**:
+1. Administrator sets pending worker ID on host via UI or CLI
+2. New worker registers with matching worker ID → migration occurs automatically
+3. Old worker receives error on next request → stops serving
+4. All migration events are audit logged for tracking
 
 ### POST /sunray-srvr/v1/setup-tokens/validate
 
