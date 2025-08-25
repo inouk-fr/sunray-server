@@ -58,7 +58,7 @@ class SunrayApiKey(models.Model):
     
     # Display fields
     key_display = fields.Char(
-        string='API Key',
+        string='API Key (Masked)',
         compute='_compute_key_display',
         help='Partial view of API key for security'
     )

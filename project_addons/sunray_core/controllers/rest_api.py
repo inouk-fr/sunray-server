@@ -495,6 +495,107 @@ class SunrayRESTController(http.Controller):
         
         return self._json_response(config)
     
+    @http.route('/sunray-srvr/v1/config/<string:hostname>', type='http', auth='none', methods=['GET'], cors='*', csrf=False)
+    def get_host_config(self, hostname, **kwargs):
+        """Get configuration for a specific host (worker-optimized endpoint)
+        
+        This endpoint provides host-specific configuration data for workers.
+        Unlike the global /config endpoint, this returns only data relevant
+        to the specified hostname, improving security and efficiency.
+        
+        Args:
+            hostname: The hostname to get configuration for
+            
+        Returns:
+            Host-specific configuration data with authorized users only
+        """
+        api_key_obj = self._authenticate_api(request)
+        if not api_key_obj:
+            return self._error_response('Unauthorized', 401)
+        
+        # Get worker ID from header (required for security)
+        worker_name = request.httprequest.headers.get('X-Worker-ID')
+        if not worker_name:
+            return self._error_response('X-Worker-ID header required', 400)
+        
+        # Find the worker
+        worker_obj = request.env['sunray.worker'].sudo().search([
+            ('name', '=', worker_name)
+        ], limit=1)
+        
+        if not worker_obj:
+            return self._error_response(f'Worker "{worker_name}" not found', 404)
+        
+        # Find the host
+        host_obj = request.env['sunray.host'].sudo().search([
+            ('domain', '=', hostname),
+            ('is_active', '=', True)
+        ], limit=1)
+        
+        if not host_obj:
+            return self._error_response(f'Host "{hostname}" not found', 404)
+        
+        # Security check: Only bound worker can access this host's config
+        if not host_obj.sunray_worker_id or host_obj.sunray_worker_id.id != worker_obj.id:
+            return self._error_response(
+                f'Worker "{worker_name}" not authorized for host "{hostname}"', 
+                403
+            )
+        
+        # Build host-specific configuration (same structure as /register endpoint)
+        config = {
+            'version': 4,  # API version
+            'generated_at': fields.Datetime.now().isoformat(),
+            'worker_id': worker_obj.id,
+            'worker_name': worker_obj.name,
+            'host': {
+                'domain': host_obj.domain,
+                'backend': host_obj.backend_url,
+                'authorized_users': host_obj.user_ids.mapped('username'),
+                'session_duration_s': host_obj.session_duration_s,
+                'exceptions_tree': host_obj.get_exceptions_tree(),
+                'bypass_waf_for_authenticated': host_obj.bypass_waf_for_authenticated,
+                'waf_bypass_revalidation_s': host_obj.waf_bypass_revalidation_s,
+                'config_version': host_obj.config_version.isoformat() if host_obj.config_version else None
+            },
+            'users': {}
+        }
+        
+        # Add user data for authorized users only
+        for user_obj in host_obj.user_ids.filtered(lambda u: u.is_active):
+            config['users'][user_obj.username] = {
+                'email': user_obj.email,
+                'display_name': user_obj.display_name or user_obj.username,
+                'created_at': user_obj.create_date.isoformat(),
+                'passkeys': []
+            }
+            
+            # Add passkeys
+            for passkey in user_obj.passkey_ids:
+                config['users'][user_obj.username]['passkeys'].append({
+                    'credential_id': passkey.credential_id,
+                    'public_key': passkey.public_key,
+                    'name': passkey.name,
+                    'created_at': passkey.create_date.isoformat(),
+                    'backup_eligible': passkey.backup_eligible,
+                    'backup_state': passkey.backup_state
+                })
+        
+        # Setup request context and log config fetch
+        context_data = self._setup_request_context(request)
+        request.env['sunray.audit.log'].sudo().create_worker_event(
+            event_type='config.host_fetched',
+            details={
+                'worker_id': context_data['worker_id'],
+                'hostname': hostname,
+                'user_count': len(config['users'])
+            },
+            sunray_worker=context_data['worker_id'],
+            ip_address=request.httprequest.environ.get('REMOTE_ADDR')
+        )
+        
+        return self._json_response(config)
+    
     @http.route('/sunray-srvr/v1/users/check', type='http', auth='none', methods=['POST'], cors='*', csrf=False)
     def check_user_exists(self, **kwargs):
         """Check if a user exists"""
