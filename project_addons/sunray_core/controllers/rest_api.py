@@ -596,26 +596,45 @@ class SunrayRESTController(http.Controller):
         
         return self._json_response(config)
     
-    @http.route('/sunray-srvr/v1/users/check', type='http', auth='none', methods=['POST'], cors='*', csrf=False)
-    def check_user_exists(self, **kwargs):
-        """Check if a user exists"""
+    @http.route('/sunray-srvr/v1/users/<string:username>', type='http', auth='none', methods=['GET'], cors='*', csrf=False)
+    def get_user(self, username, **kwargs):
+        """Get user details by username"""
         api_key_obj = self._authenticate_api(request)
         if not api_key_obj:
             return self._error_response('Unauthorized', 401)
-        
-        # Get JSON data
-        data = json.loads(request.httprequest.data)
-        username = data.get('username')
         
         if not username:
             return self._error_response('Username required', 400)
         
         user_obj = request.env['sunray.user'].sudo().search([
-            ('username', '=', username),
-            ('is_active', '=', True)
+            ('username', '=', username)
         ], limit=1)
         
-        return self._json_response({'exists': bool(user_obj)})
+        if not user_obj:
+            return self._error_response('User not found', 404)
+        
+        # Get authorized hosts data
+        authorized_hosts = []
+        for host in user_obj.host_ids.filtered('is_active'):
+            authorized_hosts.append({
+                'domain': host.domain,
+                'name': host.name
+            })
+        
+        # Build response data
+        user_data = {
+            'username': user_obj.username,
+            'email': user_obj.email,
+            'display_name': user_obj.email,  # Using email as display name for now
+            'is_active': user_obj.is_active,
+            'passkey_count': user_obj.passkey_count,
+            'active_session_count': user_obj.active_session_count,
+            'last_login': user_obj.last_login.isoformat() if user_obj.last_login else None,
+            'authorized_hosts': authorized_hosts,
+            'config_version': user_obj.config_version.isoformat() if user_obj.config_version else None
+        }
+        
+        return self._json_response(user_data)
     
     @http.route('/sunray-srvr/v1/setup-tokens/validate', type='http', auth='none', methods=['POST'], cors='*', csrf=False)
     def validate_token(self, **kwargs):
