@@ -154,7 +154,7 @@
                                 <p>Currently active user sessions on this host. Sessions shown here are properly filtered to display only active sessions.</p>
                                 <p><strong>Active Sessions: <field name="active_session_count" readonly="1" nolabel="1" style="display:inline;"/></strong></p>
                             </div>
-                            <field name="active_session_ids" readonly="1">
+                            <field name="active_session_ids" readonly="0">
                                 <list>
                                     <field name="session_id"/>
                                     <field name="user_id"/>

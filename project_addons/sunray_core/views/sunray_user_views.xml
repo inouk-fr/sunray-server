@@ -81,6 +81,7 @@
                         <page string="Setup Tokens">
                             <field name="setup_token_ids" options="{'no_create': True}">
                                 <list >
+                                    <field name="id" optional="hide" />
                                     <field name="device_name"/>
                                     <field name="host_id"/>
                                     <field name="expires_at"/>
@@ -91,14 +92,21 @@
                         </page>
                         
                         <page string="Active Sessions">
-                            <field name="session_ids" readonly="1" domain="[('is_active', '=', True)]">
+                            <field name="active_session_ids" readonly="0">
                                 <list>
+                                    <field name="id" optional="hide" />
                                     <field name="session_id"/>
                                     <field name="host_id"/>
                                     <field name="created_at"/>
                                     <field name="last_activity"/>
                                     <field name="expires_at"/>
-                                    <field name="created_ip"/>
+                                    <field name="created_ip"  optional="hide" />
+                                    <button name="action_open_revoke_wizard" 
+                                            string="Revoke Session" 
+                                            type="object" 
+                                            class="btn-danger"
+                                            help="Immediately terminates this specific session. The user will need to authenticate again to access protected resources. This action only affects the current session - any other active sessions for the same user will remain valid."
+                                            icon="fa-user-times"/>
                                 </list>
                             </field>
                         </page>
@@ -110,13 +118,14 @@
                             </div>
                             <field name="host_ids">
                                 <list>
+                                    <field name="id" optional="hide" />
                                     <field name="domain"/>
                                     <field name="sunray_worker_id" string="Worker" optional="show"/>
                                     <field name="is_active" widget="boolean_toggle" optional="show"/>
                                     <button name="%(action_revoke_user_sessions_on_host)d" 
                                             string="Revoke Sessions" 
                                             type="action" 
-                                            class="btn-warning"
+                                            class="btn-danger"
                                             context="{'default_user_id': parent.id, 'default_host_id': id}"
                                             help="Revokes all sessions for this user on this specific protected host only. The user will need to re-authenticate to access this host, but sessions on other hosts remain valid. Use when access to a specific application needs to be temporarily restricted."
                                             icon="fa-user-times"/>
@@ -140,6 +149,7 @@
                             </div>
                             <field name="worker_ids" readonly="1">
                                 <list>
+                                    <field name="id" optional="hide" />
                                     <field name="name"/>
                                     <field name="worker_type" widget="badge"/>
                                     <field name="host_count" string="Protected Hosts"/>
@@ -149,7 +159,7 @@
                                     <button name="%(action_revoke_user_sessions_on_worker)d" 
                                             string="Revoke Sessions" 
                                             type="action" 
-                                            class="btn-warning"
+                                            class="btn-danger"
                                             context="{'default_user_id': parent.id, 'default_worker_id': id}"
                                             help="Revokes all sessions for this user across all protected hosts managed by this specific worker. The user will need to re-authenticate on all hosts protected by this worker. Useful when a user reports suspicious activity on their account."
                                             icon="fa-user-times"/>

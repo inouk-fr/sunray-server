@@ -65,7 +65,7 @@
                             type="object" 
                             string="Clear All Sessions (Nuclear)" 
                             class="btn-danger"
-                            icon="fa-nuclear"
+                            icon="fa-trash"
                             invisible="not id or host_count == 0"
                             help="DANGER: Removes ALL user sessions across ALL protected hosts managed by this worker. Every user will be forced to re-authenticate. This is the 'nuclear option' - only use in emergencies such as suspected security breaches. Consider using host-specific session clearing for less disruptive maintenance."
                             confirm="NUCLEAR OPTION: This will immediately terminate ALL user sessions across ALL hosts protected by this worker. ALL users will need to re-authenticate. This cannot be undone. Are you absolutely sure?"/>

@@ -53,7 +53,13 @@ class SunrayUser(models.Model):
     session_ids = fields.One2many(
         'sunray.session',
         'user_id',
-        string='Sessions'
+        string='Sessions',
+    )
+    active_session_ids = fields.One2many(
+        'sunray.session',
+        'user_id',
+        string='Active Sessions',
+        domain=[('is_active', '=', True)]
     )
     
     # Computed fields
