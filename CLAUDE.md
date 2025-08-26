@@ -168,10 +168,16 @@ bin/sunray-srvr -u sunray_core               # Update sunray_core module
 bin/sunray-srvr -u all --stop-after-init     # Update all modules and exit
 bin/sunray-srvr -i sunray_core               # Install sunray_core module
 
-# Testing - IMPORTANT: Use Only Test Launcher Scripts
+# Testing - IMPORTANT: Use Only Test Launcher Scripts and Proper Syntax Validation
 # NEVER run bin/sunray-srvr --test-enable directly
+# NEVER run direct Python import tests or syntax validation commands
 # ALWAYS use the test launcher scripts at repository root:
 
+# STEP 1: MANDATORY Syntax and Import Validation
+# Before running any tests, ALWAYS validate module syntax and imports:
+bin/sunray-srvr -u sunray_core --stop-after-init    # Updates module and validates all syntax/imports
+
+# STEP 2: Run Comprehensive Tests (only after Step 1 passes)
 bin/test_server.sh                           # Run all server tests with comprehensive reporting
 bin/test_server.sh --test TestAccessRules    # Run specific Access Rules tests
 bin/test_server.sh --coverage --verbose      # Full test run with coverage
