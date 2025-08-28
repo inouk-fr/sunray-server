@@ -22,6 +22,7 @@ class SunrayAuditLog(models.Model):
         # Authentication Events
         ('auth.success', 'Authentication Success'),
         ('auth.failure', 'Authentication Failure'),
+        ('auth.logout', 'Authentication Logout'),
         # Token Management Events
         ('token.generated', 'Token Generated'),
         ('token.consumed', 'Token Consumed'),
@@ -29,6 +30,8 @@ class SunrayAuditLog(models.Model):
         # Passkey Events
         ('passkey.registered', 'Passkey Registered'),
         ('passkey.revoked', 'Passkey Revoked'),
+        ('passkey.authenticated', 'Passkey Authenticated'),
+        ('passkey.cbor_validation_success', 'Passkey CBOR Validation Success'),
         # Configuration Events
         ('config.fetched', 'Config Fetched'),
         ('config.host_fetched', 'Host Config Fetched'),
@@ -40,6 +43,7 @@ class SunrayAuditLog(models.Model):
         ('session.revoked', 'Session Revoked'),
         ('session.expired', 'Session Expired'),
         ('session.bulk_revocation', 'Bulk Session Revocation'),
+        ('sessions.bulk_revoked', 'Sessions Bulk Revoked'),
         # Webhook Events
         ('webhook.used', 'Webhook Token Used'),
         ('webhook.regenerated', 'Webhook Token Regenerated'),
@@ -98,13 +102,19 @@ class SunrayAuditLog(models.Model):
         ('security.passkey.token_wrong_host', 'Passkey Token Wrong Host'),
         ('security.passkey.unknown_host', 'Passkey Unknown Host'),
         ('security.passkey.user_not_authorized', 'Passkey User Not Authorized'),
+        ('security.passkey.user_inactive', 'Passkey User Inactive'),
+        ('security.passkey.host_inactive', 'Passkey Host Inactive'),
         ('security.passkey.ip_not_allowed', 'Passkey IP Not Allowed'),
         ('security.passkey.missing_public_key', 'Passkey Missing Public Key'),
         ('security.passkey.invalid_credential', 'Passkey Invalid Credential'),
         ('security.passkey.duplicate_credential', 'Passkey Duplicate Credential'),
         ('security.passkey.integrity_error', 'Passkey Integrity Error'),
         ('security.passkey.registration_failed', 'Passkey Registration Failed'),
+        ('security.passkey.creation_failed', 'Passkey Creation Failed'),
         ('security.passkey.domain_mismatch', 'Passkey Domain Mismatch'),
+        ('security.passkey.invalid_cbor_format', 'Passkey Invalid CBOR Format'),
+        ('security.passkey.counter_violation', 'Passkey Counter Violation'),
+        ('security.passkey.unexpected_error', 'Passkey Unexpected Error'),
     ], required=True, string='Event Type')
     
     # User tracking fields - supports three types of actors
