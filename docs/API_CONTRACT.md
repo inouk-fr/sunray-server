@@ -653,7 +653,7 @@ curl -X POST https://sunray.example.com/sunray-srvr/v1/users/user@example.com/pa
 
 ### POST /sunray-srvr/v1/sessions
 
-**Purpose**: Creates a new session after successful access control verification.
+**Purpose**: Creates a new session after successful WebAuthn authentication and updates passkey counter.
 
 **Request Body**:
 ```json
@@ -663,12 +663,16 @@ curl -X POST https://sunray.example.com/sunray-srvr/v1/users/user@example.com/pa
   "host_domain": "example.com",
   "duration": 28800,
   "credential_id": "credential_id_used",
+  "counter": 42,
   "created_ip": "client_ip",
   "device_fingerprint": "browser_fingerprint",
   "user_agent": "Mozilla/5.0...",
   "csrf_token": "csrf_token_value"
 }
 ```
+
+**Field Descriptions**:
+- `counter` (integer, optional): WebAuthn authentication counter for replay attack prevention. Must be greater than the current stored counter value. If provided with a valid `credential_id`, the passkey's counter and last_used timestamp will be updated.
 
 **Response**:
 ```json
@@ -677,6 +681,21 @@ curl -X POST https://sunray.example.com/sunray-srvr/v1/users/user@example.com/pa
   "session_id": "generated_session_id"
 }
 ```
+
+**Error Responses**:
+- `403 Forbidden`: Counter validation failed (potential replay attack)
+  ```json
+  {
+    "error": "Authentication counter violation: counter must increase (current: 41, attempted: 40)"
+  }
+  ```
+
+**Security Notes**:
+- The `counter` field implements WebAuthn replay attack prevention
+- Counter must always increase with each authentication
+- Counter violations are logged as critical security events
+- If `counter` is provided without `credential_id`, it will be ignored
+- If `credential_id` doesn't match any passkey for the user, counter validation is skipped
 
 ### POST /sunray-srvr/v1/sessions/<session_id>/revoke
 
