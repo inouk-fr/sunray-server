@@ -479,6 +479,7 @@ The `/config/register` endpoint handles all migration logic:
     {
       "credential_id": "AbC123dEF456...",
       "public_key": "pQECAyYgASFYIH0B...",
+      "public_key_format": "cbor_cose",
       "name": "Chrome - Dec 28, 2024",
       "counter": 42,
       "created_at": "2024-12-28T10:00:00Z",
@@ -491,7 +492,8 @@ The `/config/register` endpoint handles all migration logic:
 
 **Passkey Fields**:
 - `credential_id`: Base64URL encoded credential ID to match against credential.id in authentication assertion
-- `public_key`: Base64 encoded COSE public key for signature verification
+- `public_key`: Base64-encoded CBOR/COSE public key for signature verification (WebAuthn compliant format)
+- `public_key_format`: Always `"cbor_cose"` - indicates the format of the public key
 - `name`: User-friendly device/passkey name for identification and debugging
 - `counter`: WebAuthn authentication counter for replay attack prevention (must be greater than last used value)
 - `created_at`: When the passkey was registered (ISO 8601 format)
@@ -531,6 +533,30 @@ The `/config/register` endpoint handles all migration logic:
   "name": "My Device"                               // Optional: Device name (default: "Passkey")
 }
 ```
+
+## Public Key Format Requirements
+
+All WebAuthn public keys MUST be provided in CBOR/COSE format:
+
+**Format**: CBOR-encoded COSE_Key structure, base64-encoded
+**Validation**: Server validates CBOR structure and COSE format on registration
+**Standards**: Compliant with WebAuthn Level 2/3 specifications
+
+**Example COSE Key Structure (before CBOR encoding)**:
+```json
+{
+    1: 2,        // kty: EC2 key type
+    3: -7,       // alg: ES256 algorithm
+    -1: 1,       // crv: P-256 curve
+    -2: "base64-x-coordinate",
+    -3: "base64-y-coordinate"
+}
+```
+
+**Worker Implementation Requirements**:
+- Extract public key from `attestationObject.authData.attestedCredentialData`
+- Ensure key is in COSE format before base64 encoding
+- Include CBOR validation in worker-side code for early error detection
 
 **Important Note**: The `public_key` field is REQUIRED because it's the fundamental component of WebAuthn/Passkey authentication. Without it, signature verification during authentication would be impossible.
 
