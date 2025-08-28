@@ -4,6 +4,15 @@ from odoo.exceptions import UserError
 from datetime import datetime, timedelta
 import hashlib
 import logging
+import cbor2
+import base64
+
+try:
+    from pycose.keys import CoseKey
+    from pycose.exceptions import CoseException
+    COSE_AVAILABLE = True
+except ImportError:
+    COSE_AVAILABLE = False
 
 _logger = logging.getLogger(__name__)
 
@@ -29,7 +38,7 @@ class SunrayPasskey(models.Model):
     public_key = fields.Text(
         string='Public Key', 
         required=True,
-        help='WebAuthn public key in base64'
+        help='WebAuthn public key in CBOR/COSE format (base64-encoded). Must be a valid COSE_Key structure per WebAuthn specification.'
     )
     name = fields.Char(
         string='Device Name', 
@@ -77,6 +86,151 @@ class SunrayPasskey(models.Model):
         ('credential_unique', 'UNIQUE(credential_id)', 'Credential ID must be unique!'),
         ('unique_credential_user', 'UNIQUE(credential_id, user_id)', 'Credential ID must be unique per user')
     ]
+    
+    def _validate_cbor_public_key(self, public_key_b64):
+        """
+        Validate that the public key is proper CBOR/COSE format.
+        
+        Args:
+            public_key_b64 (str): Base64-encoded public key
+            
+        Returns:
+            tuple: (is_valid, result) where result is CoseKey on success or error message on failure
+        """
+        try:
+            # Decode base64
+            try:
+                cbor_data = base64.b64decode(public_key_b64)
+            except Exception as e:
+                return False, f"Invalid base64 encoding: {str(e)}"
+            
+            # Validate CBOR structure
+            try:
+                cbor_obj = cbor2.loads(cbor_data)
+            except Exception as e:
+                return False, f"Invalid CBOR format: {str(e)}"
+            
+            # Validate COSE key format if library is available
+            if COSE_AVAILABLE:
+                try:
+                    cose_key = CoseKey.from_dict(cbor_obj)
+                    return True, cose_key
+                except Exception as e:
+                    return False, f"Invalid COSE key structure: {str(e)}"
+            else:
+                # Basic CBOR validation without COSE
+                if not isinstance(cbor_obj, dict):
+                    return False, "CBOR data must be a dictionary"
+                
+                # Check for required COSE key fields
+                if 1 not in cbor_obj:  # kty (key type)
+                    return False, "Missing required COSE key type field (1)"
+                
+                return True, cbor_obj
+                
+        except Exception as e:
+            return False, f"Unexpected validation error: {str(e)}"
+    
+    def _normalize_public_key_to_cbor(self, public_key_data):
+        """
+        Convert any public key format to canonical CBOR.
+        Currently assumes input is already in CBOR format.
+        
+        Args:
+            public_key_data (str): Public key data (base64 encoded)
+            
+        Returns:
+            str: Canonical CBOR-encoded public key (base64)
+        """
+        # For now, we assume the key is already in proper CBOR format
+        # Future enhancement could add format detection and conversion
+        is_valid, result = self._validate_cbor_public_key(public_key_data)
+        if is_valid:
+            return public_key_data.strip()
+        else:
+            raise UserError(f"Cannot normalize public key: {result}")
+    
+    # CBOR-related error messages
+    CBOR_ERROR_MESSAGES = {
+        'invalid_base64': 'Public key must be valid base64-encoded data',
+        'invalid_cbor': 'Public key must be valid CBOR-encoded data', 
+        'invalid_cose': 'Public key must be valid COSE key format',
+        'unsupported_algorithm': 'Public key algorithm not supported',
+        'missing_required_fields': 'COSE key missing required fields'
+    }
+    
+    def update_authentication_counter(self, new_counter):
+        """
+        Update the authentication counter and last_used timestamp for successful authentication.
+        
+        This method implements WebAuthn counter validation to prevent replay attacks.
+        The counter must always increase with each authentication.
+        
+        Args:
+            new_counter (int): The new counter value from WebAuthn authentication
+            
+        Returns:
+            dict: Success result with updated values
+            
+        Raises:
+            UserError: If counter validation fails (potential replay attack)
+        """
+        self.ensure_one()
+        
+        # Validate counter increment (WebAuthn spec requirement)
+        if new_counter <= self.counter:
+            # CRITICAL: Potential replay attack or counter rollback
+            self.env['sunray.audit.log'].sudo().create_audit_event(
+                event_type='security.passkey.counter_violation',
+                details={
+                    'username': self.user_id.username,
+                    'credential_id': self.credential_id,
+                    'passkey_id': self.id,
+                    'current_counter': self.counter,
+                    'attempted_counter': new_counter,
+                    'passkey_name': self.name,
+                    'host_domain': self.host_domain,
+                    'violation_type': 'counter_not_increased',
+                    'security_risk': 'replay_attack_or_cloned_credential'
+                },
+                severity='critical',
+                sunray_user_id=self.user_id.id,
+                username=self.user_id.username
+            )
+            raise UserError(f'403|Authentication counter violation: counter must increase (current: {self.counter}, attempted: {new_counter})')
+        
+        # Update counter and last_used atomically
+        now = fields.Datetime.now()
+        self.write({
+            'counter': new_counter,
+            'last_used': now
+        })
+        
+        # Log successful authentication
+        self.env['sunray.audit.log'].sudo().create_audit_event(
+            event_type='passkey.authenticated',
+            details={
+                'username': self.user_id.username,
+                'credential_id': self.credential_id,
+                'passkey_id': self.id,
+                'passkey_name': self.name,
+                'host_domain': self.host_domain,
+                'previous_counter': self.counter,  # Store current counter before update
+                'new_counter': new_counter,
+                'counter_increment': new_counter - self.counter,
+                'authentication_time': now.isoformat()
+            },
+            severity='info',
+            sunray_user_id=self.user_id.id,
+            username=self.user_id.username
+        )
+        
+        return {
+            'success': True,
+            'counter': self.counter,
+            'last_used': self.last_used,
+            'message': 'Authentication counter updated successfully'
+        }
     
     def revoke(self):
         """Revoke this passkey"""
@@ -431,6 +585,52 @@ class SunrayPasskey(models.Model):
                 username=username
             )
             raise UserError('400|Public key is required for passkey registration')
+        
+        # Phase 5.5: CBOR Format Validation - NEW
+        _logger.debug(f"Validating CBOR/COSE format for public key")
+        is_valid_cbor, validation_result = self._validate_cbor_public_key(public_key.strip())
+        
+        if not is_valid_cbor:
+            # AUDIT: Log CBOR validation failure
+            self.env['sunray.audit.log'].sudo().create_audit_event(
+                event_type='security.passkey.invalid_cbor_format',
+                details={
+                    'username': username,
+                    'credential_id': credential_id,
+                    'host_domain': host_domain,
+                    'validation_error': validation_result,
+                    'public_key_length': len(public_key),
+                    'token_id': token_obj.id,
+                    'worker_id': worker_id,
+                    'cose_available': COSE_AVAILABLE
+                },
+                severity='critical',
+                sunray_user_id=user_obj.id,
+                sunray_worker=worker_id,
+                ip_address=client_ip,
+                username=username
+            )
+            raise UserError(f'400|Invalid WebAuthn public key format: {validation_result}')
+        
+        # Log successful CBOR validation
+        _logger.info(f"CBOR validation successful for user {username}")
+        self.env['sunray.audit.log'].sudo().create_audit_event(
+            event_type='passkey.cbor_validation_success',
+            details={
+                'username': username,
+                'credential_id': credential_id,
+                'host_domain': host_domain,
+                'validation_result': 'Valid CBOR/COSE format',
+                'cose_available': COSE_AVAILABLE,
+                'token_id': token_obj.id,
+                'worker_id': worker_id
+            },
+            severity='info',
+            sunray_user_id=user_obj.id,
+            sunray_worker=worker_id,
+            ip_address=client_ip,
+            username=username
+        )
         
         # Phase 6: Duplicate Check
         _logger.debug(f"Checking for duplicate credential: {credential_id}")

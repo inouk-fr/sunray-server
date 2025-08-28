@@ -7,6 +7,8 @@ from psycopg2 import IntegrityError
 import hashlib
 import json
 import logging
+import cbor2
+import base64
 
 from datetime import datetime, timedelta
 
@@ -591,6 +593,7 @@ class SunrayRESTController(http.Controller):
             passkeys.append({
                 'credential_id': passkey.credential_id,
                 'public_key': passkey.public_key,
+                'public_key_format': 'cbor_cose',
                 'name': passkey.name,
                 'counter': passkey.counter or 0,
                 'created_at': passkey.create_date.isoformat(),
@@ -707,6 +710,13 @@ class SunrayRESTController(http.Controller):
         
         if not public_key:
             return self._error_response('Public key is required for passkey registration', 400)
+        
+        # Validate CBOR format before processing
+        try:
+            cbor_data = base64.b64decode(public_key)
+            cbor2.loads(cbor_data)
+        except Exception as e:
+            return self._error_response(f'Invalid CBOR public key format: {str(e)}', 400)
 
         # ========== Use Model Method for All Business Logic ==========
         try:
@@ -779,13 +789,16 @@ class SunrayRESTController(http.Controller):
     
     @http.route('/sunray-srvr/v1/sessions', type='http', auth='none', methods=['POST'], cors='*', csrf=False)
     def create_session(self, **kwargs):
-        """Create new session record"""
+        """Create new session record with passkey counter update"""
         api_key_obj = self._authenticate_api(request)
         if not api_key_obj:
             return self._error_response('Unauthorized', 401)
         
-        # Get JSON data
-        data = json.loads(request.httprequest.data)
+        try:
+            # Get JSON data
+            data = json.loads(request.httprequest.data)
+        except json.JSONDecodeError as e:
+            return self._error_response('Invalid JSON', 400)
         
         user_obj = request.env['sunray.user'].sudo().search([
             ('username', '=', data.get('username'))
@@ -800,16 +813,45 @@ class SunrayRESTController(http.Controller):
             ('domain', '=', host_domain)
         ])
         
+        # Get credential_id and counter from request
+        credential_id = data.get('credential_id')
+        auth_counter = data.get('counter')  # WebAuthn authentication counter
+        
+        passkey_obj = None
+        if credential_id:
+            # Find the passkey for counter update
+            passkey_obj = request.env['sunray.passkey'].sudo().search([
+                ('credential_id', '=', credential_id),
+                ('user_id', '=', user_obj.id)
+            ], limit=1)
+            
+            if passkey_obj and auth_counter is not None:
+                try:
+                    # Update passkey counter (this validates counter increment and updates last_used)
+                    passkey_obj.update_authentication_counter(auth_counter)
+                except UserError as e:
+                    # Counter validation failed - return error
+                    msg = str(e)
+                    parts = msg.split('|', 1)
+                    if len(parts) == 2 and parts[0].isdigit():
+                        status = int(parts[0])
+                        message = parts[1]
+                    else:
+                        status = 403
+                        message = msg
+                    return self._error_response(message, status)
+        
         # Calculate expiration using host's session duration
         duration = host_obj.session_duration_s if host_obj else 3600  # Use host setting or server default
         expires_at = fields.Datetime.now() + timedelta(seconds=duration)
         
-        # Create session
+        # Create session with passkey link
         session_obj = request.env['sunray.session'].sudo().create({
             'session_id': data.get('session_id'),
             'user_id': user_obj.id,
             'host_id': host_obj.id if host_obj else False,
-            'credential_id': data.get('credential_id'),
+            'passkey_id': passkey_obj.id if passkey_obj else False,
+            'credential_id': credential_id,
             'created_ip': data.get('created_ip'),
             'device_fingerprint': data.get('device_fingerprint'),
             'user_agent': data.get('user_agent'),
@@ -821,7 +863,13 @@ class SunrayRESTController(http.Controller):
         context_data = self._setup_request_context(request)
         request.env['sunray.audit.log'].sudo().create_user_event(
             event_type='session.created',
-            details={'session_id': data.get('session_id')},
+            details={
+                'session_id': data.get('session_id'),
+                'credential_id': credential_id,
+                'passkey_id': passkey_obj.id if passkey_obj else None,
+                'counter_updated': auth_counter is not None and passkey_obj is not None,
+                'new_counter': auth_counter if auth_counter is not None else None
+            },
             sunray_user_id=user_obj.id,
             sunray_worker=context_data['worker_id'],
             ip_address=data.get('created_ip'),

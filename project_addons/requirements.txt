@@ -2,6 +2,8 @@ pyotp>=2.8.0
 qrcode[pil]>=7.4.0
 python-jose[cryptography]>=3.3.0
 PyYAML==6.0.2
+cbor2>=5.4.0
+pycose>=1.0.0
 
 # Inouk Message Queue
 prometheus-client==0.14.1
