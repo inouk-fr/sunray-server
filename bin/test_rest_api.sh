@@ -106,7 +106,6 @@ list_tests() {
     echo "  status   - Test /status endpoint (no auth required)"
     echo "  config   - Test /config endpoint (auth required)"
     echo "  user     - Test /users/check endpoint (auth required)"
-    echo "  token    - Test /setup-tokens/validate endpoint (auth required)"
     echo "  session  - Test /sessions creation endpoint (auth required)"
     echo "  revoke   - Test /sessions/{id}/revoke endpoint (auth required)"
     echo ""
@@ -273,48 +272,6 @@ test_user() {
     fi
 }
 
-# Test 4: Token validation
-test_token() {
-    if [[ "$SKIP_AUTH" == "true" ]]; then
-        print_msg $YELLOW "⚠ Skipping token validation test (auth required)"
-        return
-    fi
-    
-    print_msg $BLUE "Testing /setup-tokens/validate endpoint..."
-    
-    # Generate hash for invalid token
-    local token_hash=$(echo -n "invalid-test-token-$(date +%s)" | sha256sum | cut -d' ' -f1)
-    
-    local response=$(curl -s -w "\n%{http_code}" -X POST \
-        -H "Authorization: Bearer $API_KEY" \
-        -H "X-Worker-ID: $WORKER_ID" \
-        -H "Content-Type: application/json" \
-        -d "{\"username\": \"$TEST_USERNAME\", \"token_hash\": \"$token_hash\", \"client_ip\": \"127.0.0.1\"}" \
-        "$API_URL/sunray-srvr/v1/setup-tokens/validate" 2>/dev/null || echo "CURL_ERROR")
-    
-    local http_code=$(echo "$response" | tail -n1)
-    local body=$(echo "$response" | head -n-1)
-    
-    if [[ "$VERBOSE" == "true" ]]; then
-        print_msg $YELLOW "Response code: $http_code"
-        print_msg $YELLOW "Response: $body"
-    fi
-    
-    if [[ "$http_code" == "200" ]]; then
-        if command -v jq &> /dev/null && echo "$body" | jq -e '.valid' > /dev/null 2>&1; then
-            local valid=$(echo "$body" | jq -r '.valid')
-            if [[ "$valid" == "false" ]]; then
-                record_test_result "Token Validation" "true" "Correctly rejected invalid token"
-            else
-                record_test_result "Token Validation" "false" "Should have rejected invalid token"
-            fi
-        else
-            record_test_result "Token Validation" "true" "Endpoint working"
-        fi
-    else
-        record_test_result "Token Validation" "false" "HTTP $http_code"
-    fi
-}
 
 # Test 5 & 6: Session creation and revocation
 test_session() {
@@ -403,7 +360,6 @@ run_all_tests() {
     test_status
     test_config
     test_user
-    test_token
     test_session
 }
 
@@ -422,9 +378,6 @@ run_specific_test() {
             ;;
         user)
             test_user
-            ;;
-        token)
-            test_token
             ;;
         session)
             test_session

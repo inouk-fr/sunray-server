@@ -449,94 +449,6 @@ The `/config/register` endpoint handles all migration logic:
 3. Old worker receives error on next request → stops serving
 4. All migration events are audit logged for tracking
 
-### POST /sunray-srvr/v1/setup-tokens/validate
-
-**Purpose**: Validates and consumes setup tokens for new device registration. **⚠️ CRITICAL**: This endpoint increments token usage count and will consume the token when usage limit is reached. Every token is bound to a specific host and MUST be validated against that host.
-
-**Request Body**:
-```json
-{
-  "username": "user@example.com",
-  "token_hash": "sha512:hex_hash_value",
-  "client_ip": "192.168.1.100",
-  "host_domain": "app.example.com"
-}
-```
-
-**Required Fields**:
-- `username`: Username associated with the token
-- `token_hash`: SHA-512 hash of the token (format: "sha512:hex_value")
-- `client_ip`: Client IP address for CIDR validation
-- `host_domain`: Domain where token is being used (MUST match token's bound host)
-
-**Token Consumption Behavior**:
-- Each successful validation increments `current_uses` counter
-- Token becomes consumed when `current_uses >= max_uses`
-- Default `max_uses` is 1 (single-use token)
-- Consumed tokens return error on subsequent validation attempts
-- Audit event `token.consumed` is logged on each successful validation
-- **Important**: Token consumption happens even if subsequent operations fail
-
-**Validation Steps**:
-1. Verify all required fields are present
-2. Check user exists and is active
-3. Verify token exists and hasn't expired
-4. Check token isn't already consumed
-5. **Validate host binding** - token MUST be for the specified host_domain
-6. Check client IP against allowed CIDRs (if configured)
-7. Verify usage limit not exceeded
-8. Increment usage count and mark consumed if limit reached
-
-**Response** (Success):
-```json
-{
-  "valid": true,
-  "user": {
-    "username": "user@example.com",
-    "email": "user@example.com",
-    "display_name": "User Name"
-  }
-}
-```
-
-**Response** (Error):
-```json
-{
-  "valid": false,
-  "error": "<error_message>"
-}
-```
-
-**Possible Error Messages**:
-- `"Missing required fields"` - One or more required fields not provided
-- `"User not found"` - Username doesn't exist or inactive
-- `"Invalid or expired token"` - Token not found, expired, or already consumed
-- `"Unknown host"` - host_domain not recognized in system
-- `"Token not valid for this host"` - Token is bound to a different host
-- `"IP not allowed"` - Client IP doesn't match CIDR restrictions
-- `"Token usage limit exceeded"` - Token already consumed (reached max_uses)
-
-**Security Considerations**:
-- **Host Binding**: Every token is cryptographically bound to a specific host - this is enforced
-- **Token Storage**: Tokens are stored as SHA-512 hashes, never in plaintext
-- **IP Validation**: Optional CIDR blocks restrict token usage to specific networks
-- **Single Use Default**: Tokens are single-use by default for security
-- **Audit Trail**: All validation attempts are logged with IP, host, and outcome
-- **Zero Trust**: Each validation requires full context (user, host, IP) - no assumptions
-
-**Example Usage**:
-```bash
-# Worker validates a setup token for user registration
-curl -X POST https://sunray-server.example.com/sunray-srvr/v1/setup-tokens/validate \
-  -H "Authorization: Bearer your_api_key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "user@example.com",
-    "token_hash": "sha512:a1b2c3d4e5f6...",
-    "client_ip": "192.168.1.100",
-    "host_domain": "app.example.com"
-  }'
-```
 
 ### GET /sunray-srvr/v1/users/{username}
 
@@ -579,7 +491,11 @@ curl -X POST https://sunray-server.example.com/sunray-srvr/v1/setup-tokens/valid
 
 ### POST /sunray-srvr/v1/users/{username}/passkeys
 
-**Purpose**: Registers a new passkey for a user.
+**Purpose**: Register a new passkey for a user with mandatory setup token validation.
+
+**Security**: This endpoint implements comprehensive security validation and audit logging to prevent unauthorized passkey registration.
+
+**Authentication**: Requires valid API key
 
 **Path Parameters**:
 - `username`: The username to register the passkey for
@@ -587,25 +503,98 @@ curl -X POST https://sunray-server.example.com/sunray-srvr/v1/setup-tokens/valid
 **Request Body**:
 ```json
 {
-  "credential": {
-    "id": "credential_id",
-    "rawId": "base64_raw_id",
-    "response": {
-      "attestationObject": "base64_attestation",
-      "clientDataJSON": "base64_client_data"
-    },
-    "type": "public-key"
+  "setup_token": "actual_token_value",     // REQUIRED: Raw setup token (not hash)
+  "credential": {                          // REQUIRED: WebAuthn credential object
+    "id": "credential_id",                 // REQUIRED: Unique credential identifier
+    "public_key": "base64_public_key"      // REQUIRED: Public key data (fundamental for WebAuthn)
   },
-  "setup_token": "valid_setup_token"
+  "host_domain": "app.example.com",        // REQUIRED: Target host domain
+  "name": "My Device"                      // Optional: Device name (default: "Passkey")
 }
 ```
 
-**Response**:
+**Important Note**: The `public_key` field is REQUIRED because it's the fundamental component of WebAuthn/Passkey authentication. Without it, signature verification during authentication would be impossible.
+
+**Validation Flow**:
+1. API key authentication
+2. JSON request parsing
+3. Required field validation (setup_token, credential, host_domain)
+4. User existence and active status
+5. Setup token validation (SHA-512 hash comparison)
+6. Token expiry check
+7. Token consumption status
+8. Token usage limit
+9. Host domain validation
+10. Token-host binding verification
+11. User-host authorization
+12. IP CIDR restrictions (if configured)
+13. Credential format validation
+14. Duplicate credential check
+15. Atomic passkey creation and token consumption
+
+**Response (Success)**:
 ```json
 {
   "success": true,
-  "passkey_id": "new_passkey_id"
+  "passkey_id": 123,
+  "message": "Passkey registered successfully",
+  "token_consumed": true
 }
+```
+
+**Response (Error)**:
+```json
+{
+  "error": "<specific_error_message>"
+}
+```
+
+**Error Responses**:
+
+| Status | Error Message                           | Cause                                |
+|--------|----------------------------------------|--------------------------------------|
+| 400    | Missing required fields: {fields}      | Required fields not provided         |
+| 400    | Invalid JSON                           | Malformed request body               |
+| 400    | Invalid credential format              | Credential not a dict or missing ID  |
+| 400    | Unknown host domain: {domain}          | Host doesn't exist or inactive       |
+| 401    | Unauthorized                           | Invalid or missing API key           |
+| 401    | Invalid setup token                    | Token hash doesn't match             |
+| 401    | Setup token expired                    | Token past expiry date               |
+| 403    | Token already consumed                 | Token already used                   |
+| 403    | Token usage limit exceeded             | Token at max uses                    |
+| 403    | Token not valid for this host          | Token bound to different host        |
+| 403    | User not authorized for host: {domain} | User not in host's user list         |
+| 403    | IP not allowed                         | Client IP outside allowed CIDRs      |
+| 404    | User not found                         | Username doesn't exist or inactive   |
+| 409    | Credential already registered          | Duplicate credential ID              |
+| 500    | Registration failed                    | Database or system error             |
+
+**Security Audit Events**:
+All registration attempts are logged with comprehensive details:
+- `passkey.registered` - Successful registration
+- `security.passkey.*` - Various security violations
+- All events include: timestamp, user, IP, user agent, worker ID, and context
+
+**Transaction Behavior**:
+- Business operations (passkey + token) are atomic
+- Audit logs are always committed regardless of outcome
+- On error: business data rolled back, audit persists
+
+**Example**:
+```bash
+curl -X POST https://sunray.example.com/sunray-srvr/v1/users/user@example.com/passkeys \
+  -H "Authorization: Bearer your_api_key" \
+  -H "Content-Type: application/json" \
+  -H "X-Worker-ID: worker-001" \
+  -d '{
+    "setup_token": "abc123def456",
+    "credential": {
+      "id": "YmFzZTY0X2NyZWRlbnRpYWxfaWQ=",
+      "public_key": "YmFzZTY0X3B1YmxpY19rZXk="
+    },
+    "host_domain": "app.example.com",
+    "name": "Chrome on MacBook"
+  }'
 ```
 
 ### POST /sunray-srvr/v1/sessions/validate
@@ -638,68 +627,7 @@ curl -X POST https://sunray-server.example.com/sunray-srvr/v1/setup-tokens/valid
 }
 ```
 
-### POST /sunray-srvr/v1/auth/challenge
 
-**Purpose**: Initiates WebAuthn authentication challenge.
-
-**Request Body**:
-```json
-{
-  "username": "user@example.com",
-  "host": "example.com"
-}
-```
-
-**Response**:
-```json
-{
-  "challenge": "base64_challenge",
-  "allowCredentials": [
-    {
-      "id": "credential_id",
-      "type": "public-key"
-    }
-  ],
-  "timeout": 60000
-}
-```
-
-### POST /sunray-srvr/v1/auth/verify
-
-**Purpose**: Verify passkey authentication. Verifies WebAuthn access control response (does NOT create session).
-
-**Request Body**:
-```json
-{
-  "username": "user@example.com",
-  "credential": {
-    "id": "credential_id",
-    "rawId": "base64_raw_id",
-    "response": {
-      "authenticatorData": "base64_auth_data",
-      "clientDataJSON": "base64_client_data",
-      "signature": "base64_signature"
-    },
-    "type": "public-key"
-  },
-  "challenge": "base64_challenge",
-  "host_domain": "example.com",
-  "client_ip": "client_ip_address"
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "user": {
-    "id": 123,
-    "username": "user@example.com",
-    "email": "user@example.com",
-    "display_name": "User Name"
-  }
-}
-```
 
 ### POST /sunray-srvr/v1/sessions
 

@@ -86,6 +86,25 @@ class SunrayAuditLog(models.Model):
         ('SESSION_IP_CHANGED', 'Session IP Changed'),
         ('SESSION_COUNTRY_CHANGED', 'Session Country Changed'),
         ('SESSION_VALIDATION_FAILED', 'Session Validation Failed'),
+        # Passkey Security Events
+        ('security.passkey.unauthorized_api', 'Passkey Unauthorized API Access'),
+        ('security.passkey.invalid_json', 'Passkey Invalid JSON'),
+        ('security.passkey.missing_fields', 'Passkey Missing Fields'),
+        ('security.passkey.user_not_found', 'Passkey User Not Found'),
+        ('security.passkey.token_not_found', 'Passkey Token Not Found'),
+        ('security.passkey.token_expired', 'Passkey Token Expired'),
+        ('security.passkey.token_already_consumed', 'Passkey Token Already Consumed'),
+        ('security.passkey.token_usage_exceeded', 'Passkey Token Usage Exceeded'),
+        ('security.passkey.token_wrong_host', 'Passkey Token Wrong Host'),
+        ('security.passkey.unknown_host', 'Passkey Unknown Host'),
+        ('security.passkey.user_not_authorized', 'Passkey User Not Authorized'),
+        ('security.passkey.ip_not_allowed', 'Passkey IP Not Allowed'),
+        ('security.passkey.missing_public_key', 'Passkey Missing Public Key'),
+        ('security.passkey.invalid_credential', 'Passkey Invalid Credential'),
+        ('security.passkey.duplicate_credential', 'Passkey Duplicate Credential'),
+        ('security.passkey.integrity_error', 'Passkey Integrity Error'),
+        ('security.passkey.registration_failed', 'Passkey Registration Failed'),
+        ('security.passkey.domain_mismatch', 'Passkey Domain Mismatch'),
     ], required=True, string='Event Type')
     
     # User tracking fields - supports three types of actors

@@ -55,6 +55,11 @@ Think of Sunray as a security bouncer at a club entrance:
 - Server enforces all business logic and validation; workers are thin translation layers
 - Follow server-centric design principles: no worker-side validation or default values
 
+### Passkey Registration Security
+- All passkey registrations MUST use setup tokens for authorization
+- Setup tokens are validated in the model layer (register_with_setup_token method)
+- Comprehensive audit logging tracks all registration attempts
+
 ## Environment Configuration
 
 **Note**: Sensitive environment-specific information (URLs, API keys, credentials) should be stored in `.claude.local.md` which is not committed to the repository. Create this file locally with your specific environment details.
@@ -168,35 +173,138 @@ bin/sunray-srvr -u sunray_core               # Update sunray_core module
 bin/sunray-srvr -u all --stop-after-init     # Update all modules and exit
 bin/sunray-srvr -i sunray_core               # Install sunray_core module
 
-# Testing - IMPORTANT: Use Only Test Launcher Scripts and Proper Syntax Validation
-# NEVER run bin/sunray-srvr --test-enable directly
-# NEVER run direct Python import tests or syntax validation commands
-# ALWAYS use the test launcher scripts at repository root:
+# Testing - Pure Launcher Philosophy
+# The test launcher is a thin parameter translator - Odoo handles ALL output directly
+bin/test_server.sh                           # Run ALL tests with real-time output
+bin/test_server.sh --list-tests              # Discover available test classes (dynamic)
+bin/test_server.sh --test TestClassName      # Run specific test class
+bin/test_server.sh --verbose                 # Enable debug logging
+bin/test_server.sh --log                     # Save output to timestamped log file
+bin/test_server.sh --log mytest.log          # Save output to specific log file
 
-# STEP 1: MANDATORY Syntax and Import Validation
-# Before running any tests, ALWAYS validate module syntax and imports:
-bin/sunray-srvr -u sunray_core --stop-after-init    # Updates module and validates all syntax/imports
-
-# STEP 2: Run Comprehensive Tests (only after Step 1 passes)
-bin/test_server.sh                           # Run all server tests with comprehensive reporting
-bin/test_server.sh --test TestAccessRules    # Run specific Access Rules tests
-bin/test_server.sh --coverage --verbose      # Full test run with coverage
-./test_worker.sh                           # Run all worker tests
-./test_worker.sh --coverage                # Worker tests with coverage report
-./test_worker.sh --watch                   # Interactive development mode
-
-# Fresh Database for Testing (if needed by test scripts)
-export TESTDB="sunray_test_$(date +%s)"
-dropdb ${TESTDB} 2>/dev/null || true
-createdb ${TESTDB}
-bin/sunray-srvr --database=${TESTDB} --init=base --without-demo=all --stop-after-init
-bin/sunray-srvr --database=${TESTDB} -i sunray_core
+# IMPORTANT: Before running tests, ensure module syntax is valid:
+bin/sunray-srvr -u sunray_core --stop-after-init
 ```
 
 **Note**: `bin/sunray-srvr` is a wrapper that:
 - Selects the correct Python environment with all required packages
 - Injects the configuration file (`-c etc/odoo.buildit.cfg`)
 - Maps PostgreSQL environment variables (PGUSER, PGPASSWORD, PGDATABASE) to Odoo equivalents
+
+### Running Tests - Pure Launcher Approach
+
+The test runner (`bin/test_server.sh`) is a **pure launcher** that translates user-friendly options into Odoo test commands. It does NOT parse or validate test output - Odoo handles everything directly.
+
+#### Key Philosophy
+- **Real-time output**: See tests as they execute
+- **No wrapping**: Direct Odoo output, no parsing
+- **Enhanced UX**: Colored tool messages for clarity
+- **Simple logging**: Optional output capture with --log
+
+#### Available Options
+```bash
+--help              # Show colored help with examples
+--test CLASS        # Run specific test class (case-sensitive!)
+--method METHOD     # Run specific test method (requires --test)
+--verbose           # Enable Odoo debug logging  
+--log [FILE]        # Save output to log file (optional filename)
+--list-tests        # Dynamically discover all test classes
+--module MODULE     # Test specific module (default: sunray_core)
+--all               # Run tests for all modules
+```
+
+#### Discovering Tests
+
+Always use dynamic discovery to find exact class names:
+
+```bash
+# List all available test classes with colored output
+bin/test_server.sh --list-tests
+
+# Example output:
+# [CYAN] Available Test Classes
+# [GREEN] Run ALL tests:
+#   ./bin/test_server.sh
+# [YELLOW] From test_cache_invalidation:
+# [BLUE]   TestCacheInvalidation
+# [GREEN]     ./bin/test_server.sh --test TestCacheInvalidation
+```
+
+#### Running Tests
+
+```bash
+# Run ALL tests - see real-time progress
+bin/test_server.sh
+
+# Run specific test class - immediate feedback
+bin/test_server.sh --test TestPasskeyRegistrationSecurity
+
+# Run specific method
+bin/test_server.sh --test TestCacheInvalidation --method test_bulk_cache_refresh
+
+# Debug failing test - verbose output
+bin/test_server.sh --test TestAccessRules --verbose
+
+# Capture output for CI/CD - log to file
+bin/test_server.sh --log test_results.log
+
+# Capture with custom filename
+bin/test_server.sh --test TestCacheInvalidation --log my_test.log
+```
+
+#### Understanding Output
+
+The launcher shows colored status messages, then Odoo's native output:
+
+```
+[CYAN] ================================================
+[CYAN]  Sunray Server Test Runner
+[CYAN] ================================================
+[GREEN] ✓ Prerequisites check passed
+[BLUE] Running test class: TestCacheInvalidation
+[YELLOW] Command: bin/sunray-srvr --test-enable --stop-after-init --workers=0 -u sunray_core --test-tags=/sunray_core:TestCacheInvalidation
+
+# Then Odoo's real-time output follows:
+2025-08-28 INFO Starting TestCacheInvalidation.test_bulk_cache_refresh...
+2025-08-28 INFO Starting TestCacheInvalidation.test_config_endpoint...
+...
+2025-08-28 INFO sunray_core: 13 tests 4.13s 259 queries
+2025-08-28 INFO 0 failed, 0 error(s) of 13 tests
+```
+
+#### Key Odoo Output Indicators
+
+From Odoo's native output, look for:
+- `X tests` - Total tests executed
+- `X failed` - Number of failures  
+- `X error(s)` - Number of errors
+- `Xs` - Execution time
+- `X queries` - Database queries
+
+**Exit Codes:**
+- 0 = All tests passed
+- Non-zero = Tests failed or errored
+
+#### Troubleshooting
+
+| Symptom | What Odoo Shows | Solution |
+|---------|-----------------|----------|
+| No tests found | "0 failed, 0 error(s) of 0 tests" | Use `--list-tests` for exact class names |
+| Import errors | Module errors before tests start | Run `bin/sunray-srvr -u sunray_core --stop-after-init` |
+| Need more details | Brief output | Add `--verbose` for debug logging |
+| Want to save output | Terminal only | Add `--log` to capture to file |
+| Test takes long | Long execution time | Normal - watch real-time progress |
+
+#### Adding New Tests
+
+New test files should:
+1. Be placed in `project_addons/sunray_core/tests/`
+2. Start with `test_` prefix (e.g., `test_my_feature.py`)
+3. Import from `odoo.tests.common`
+4. Use class names starting with `Test` (e.g., `TestMyFeature`)
+5. Use method names starting with `test_` (e.g., `test_my_scenario`)
+
+After adding tests, they will automatically appear in `--list-tests` output.
 
 ### Worker Development
 
@@ -585,31 +693,52 @@ def test_webhook(self, mock_post):
 ```
 The key indicator is `0 failed, 0 error(s)` in the final result line, not database constraint violations that appear during test execution.
 
-### Test Launcher Scripts
+### Test Launcher Script
 
-**Policy**: All tools, scripts and utilities that are part of the project must be stored in the `bin/` directory.
-
-Three comprehensive test runners are available for different testing scenarios:
+**Policy**: All project tools must be in the `bin/` directory.
 
 #### Server Tests (`bin/test_server.sh`)
-Internal unit/integration testing for Odoo modules and business logic.
+A **pure launcher** for Odoo's test framework - no parsing, direct execution.
 
+**Philosophy:**
+- Translates user options to Odoo test commands
+- Shows real-time test execution
+- No output parsing or validation
+- Optional logging with --log
+
+**Examples:**
 ```bash
-# Run all Sunray server tests
+# Run all tests - watch them execute in real-time
 bin/test_server.sh
 
-# Run specific test class (Access Rules, Webhook Tokens, etc.)
-bin/test_server.sh --test TestAccessRules
+# Run specific test class
+bin/test_server.sh --test TestCacheInvalidation
 
-# Clean database run with coverage reporting
-bin/test_server.sh --clean --coverage --verbose
+# Run specific method
+bin/test_server.sh --test TestPasskeyRegistrationSecurity --method test_01_successful_registration
 
-# List all available test classes and methods
+# Verbose mode for debugging
+bin/test_server.sh --test TestAccessRules --verbose
+
+# Save output for later analysis
+bin/test_server.sh --log
+# Creates: test_logs_and_coverage/test_20250828_094344.log
+
+# Dynamic test discovery
 bin/test_server.sh --list-tests
-
-# Run specific test method
-bin/test_server.sh --test TestAccessRules --method test_priority_ordering
 ```
+
+**What You'll See:**
+1. Colored launcher messages (status, command)
+2. Real-time Odoo test execution
+3. Individual test progress
+4. Final results from Odoo
+
+**No More:**
+- Parsing test output
+- Validation errors
+- Hanging issues
+- Complex result extraction
 
 #### REST API Tests (`bin/test_rest_api.sh`)
 External API testing that simulates Worker-Server communication.

@@ -198,3 +198,35 @@ class SunraySetupToken(models.Model):
         )
         
         return token_obj, token_value
+    
+    def consume(self):
+        """
+        Consume this token by incrementing usage count and marking as consumed if max uses reached.
+        
+        This method encapsulates all token consumption logic and should be called after
+        successful passkey registration.
+        
+        Returns:
+            dict: {'consumed': bool, 'current_uses': int, 'max_uses': int}
+        """
+        self.ensure_one()
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        _logger.info(f"Consuming token {self.id}, current uses: {self.current_uses}")
+        new_uses = self.current_uses + 1
+        token_consumed = new_uses >= self.max_uses
+        
+        self.write({
+            'current_uses': new_uses,
+            'consumed': token_consumed,
+            'consumed_date': fields.Datetime.now() if token_consumed else False
+        })
+        
+        _logger.info(f"Token updated: uses={new_uses}/{self.max_uses}, consumed={token_consumed}")
+        
+        return {
+            'consumed': token_consumed,
+            'current_uses': new_uses,
+            'max_uses': self.max_uses
+        }

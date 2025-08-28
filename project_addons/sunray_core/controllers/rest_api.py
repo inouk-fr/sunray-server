@@ -2,6 +2,8 @@
 
 from odoo import http, fields
 from odoo.http import request, Response
+from odoo.exceptions import UserError, ValidationError
+from psycopg2 import IntegrityError
 import hashlib
 import json
 import logging
@@ -15,9 +17,41 @@ class SunrayRESTController(http.Controller):
     """REST API endpoints for Cloudflare Worker communication"""
     
     def _setup_request_context(self, req):
-        """Setup request context for audit logging
+        """Setup request context for audit logging with implicit context injection
         
-        Extracts and stores request correlation data in Odoo context
+        This method extracts request correlation data and IMPLICITLY injects it into 
+        the Odoo environment context. This allows all subsequent audit log entries 
+        within the same request to automatically inherit correlation fields without 
+        explicit passing.
+        
+        Context fields injected:
+        - sunray_request_id: Unique request identifier for correlation
+        - sunray_event_source: Source of the event (api/ui/worker/cli/system)  
+        - sunray_worker_id: Worker identifier if present in headers
+        
+        The audit log's create() method override automatically uses these context 
+        values if the fields are not explicitly provided, enabling transparent 
+        request correlation across all audit events.
+        
+        Args:
+            req: The HTTP request object
+            
+        Returns:
+            dict: Contains request_id, event_source, and worker_id for explicit use
+                  Note: Even though returned, these values are already in context
+        
+        Example:
+            context_data = self._setup_request_context(request)
+            # After this call, any audit event created will automatically have:
+            # - request_id from context (if not explicitly passed)
+            # - event_source from context (if not explicitly passed)
+            
+            # This audit event automatically gets request_id and event_source:
+            request.env['sunray.audit.log'].sudo().create_audit_event(
+                event_type='some.event',
+                details={'key': 'value'}
+                # request_id and event_source are pulled from context automatically
+            )
         """
         # Get or create request ID
         audit_model = request.env['sunray.audit.log'].sudo()
@@ -566,250 +600,169 @@ class SunrayRESTController(http.Controller):
         
         return self._json_response(user_data)
     
-    @http.route('/sunray-srvr/v1/setup-tokens/validate', type='http', auth='none', methods=['POST'], cors='*', csrf=False)
-    def validate_token(self, **kwargs):
-        """Validate setup token"""
-        api_key_obj = self._authenticate_api(request)
-        if not api_key_obj:
-            return self._error_response('Unauthorized', 401)
-        
-        # Get JSON data
-        data = json.loads(request.httprequest.data)
-        username = data.get('username')
-        token_hash = data.get('token_hash')
-        client_ip = data.get('client_ip')
-        host_domain = data.get('host_domain')  # Domain where token is being used
-        
-        if not all([username, token_hash, client_ip, host_domain]):
-            return self._error_response('Missing required fields', 400)
-        
-        # Find user and token
-        user_obj = request.env['sunray.user'].sudo().search([
-            ('username', '=', username),
-            ('is_active', '=', True)
-        ])
-        
-        if not user_obj:
-            return self._json_response({'valid': False, 'error': 'User not found'})
-        
-        # Find matching token
-        token_obj = request.env['sunray.setup.token'].sudo().search([
-            ('user_id', '=', user_obj.id),
-            ('token_hash', '=', token_hash),
-            ('consumed', '=', False),
-            ('expires_at', '>', fields.Datetime.now())
-        ])
-        
-        if not token_obj:
-            return self._json_response({'valid': False, 'error': 'Invalid or expired token'})
-        
-        # Check if token is for the correct host (REQUIRED)
-        host_obj = request.env['sunray.host'].sudo().search([
-            ('domain', '=', host_domain),
-            ('is_active', '=', True)
-        ])
-        
-        if not host_obj:
-            return self._json_response({'valid': False, 'error': 'Unknown host'})
-        
-        if token_obj.host_id.id != host_obj.id:
-            return self._json_response({'valid': False, 'error': 'Token not valid for this host'})
-        
-        # Check constraints using CIDR
-        from odoo.addons.sunray_core.utils.cidr import check_cidr_match
-        allowed_cidrs = token_obj.get_allowed_cidrs()
-        if allowed_cidrs and not any(check_cidr_match(client_ip, cidr) for cidr in allowed_cidrs):
-            return self._json_response({'valid': False, 'error': 'IP not allowed'})
-        
-        # Check usage limit
-        if token_obj.current_uses >= token_obj.max_uses:
-            return self._json_response({'valid': False, 'error': 'Token usage limit exceeded'})
-        
-        # Mark as consumed
-        token_obj.write({
-            'current_uses': token_obj.current_uses + 1,
-            'consumed': token_obj.current_uses + 1 >= token_obj.max_uses,
-            'consumed_date': fields.Datetime.now()
-        })
-        
-        # Setup request context and log event
-        context_data = self._setup_request_context(request)
-        request.env['sunray.audit.log'].sudo().create_user_event(
-            event_type='token.consumed',
-            details={'token_id': token_obj.id},
-            sunray_user_id=user_obj.id,
-            sunray_worker=context_data['worker_id'],
-            ip_address=client_ip,
-            username=username  # Keep for compatibility
-        )
-        
-        return self._json_response({
-            'valid': True,
-            'user': {
-                'username': user_obj.username,
-                'email': user_obj.email,
-                'display_name': user_obj.display_name
-            }
-        })
-    
     @http.route('/sunray-srvr/v1/users/<string:username>/passkeys', type='http', auth='none', methods=['POST'], cors='*', csrf=False)
     def register_passkey(self, username, **kwargs):
-        """Register a new passkey"""
-        api_key_obj = self._authenticate_api(request)
-        if not api_key_obj:
-            return self._error_response('Unauthorized', 401)
+        """Register a new passkey using the model method"""
         
-        # Get JSON data
-        data = json.loads(request.httprequest.data)
+        _logger.info(f"REST API: Starting passkey registration for username: {username}")
         
-        user_obj = request.env['sunray.user'].sudo().search([('username', '=', username)])
-        if not user_obj:
-            return self._error_response('User not found', 404)
-        
-        # Validate host_domain is provided and exists
-        host_domain = data.get('host_domain')
-        if not host_domain:
-            return self._error_response('host_domain is required for passkey registration', 400)
-
-        host_obj = request.env['sunray.host'].sudo().search([
-            ('domain', '=', host_domain),
-            ('is_active', '=', True)
-        ])
-
-        if not host_obj:
-            return self._error_response(f'Unknown host domain: {host_domain}', 400)
-
-        # Check if user is authorized for this host
-        if user_obj not in host_obj.user_ids:
-            return self._error_response(f'User not authorized for host: {host_domain}', 403)
-
-        # Create passkey with domain binding
-        passkey_obj = request.env['sunray.passkey'].sudo().create({
-            'user_id': user_obj.id,
-            'credential_id': data.get('credential_id'),
-            'public_key': data.get('public_key'),
-            'name': data.get('name'),
-            'host_domain': host_domain,  # Bind to specific domain
-            'created_ip': data.get('client_ip'),
-            'created_user_agent': data.get('user_agent')
-        })
-        
-        # Setup request context and log event
+        # Setup request context
         context_data = self._setup_request_context(request)
-        request.env['sunray.audit.log'].sudo().create_user_event(
-            event_type='passkey.registered',
-            details={'passkey_id': passkey_obj.id, 'name': data.get('name')},
-            sunray_user_id=user_obj.id,
-            sunray_worker=context_data['worker_id'],
-            ip_address=data.get('client_ip'),
-            user_agent=data.get('user_agent'),
-            username=username  # Keep for compatibility
-        )
-        
-        return self._json_response({'success': True, 'passkey_id': passkey_obj.id})
-    
-    @http.route('/sunray-srvr/v1/auth/verify', type='http', auth='none', methods=['POST'], cors='*', csrf=False)
-    def verify_authentication(self, **kwargs):
-        """Verify passkey authentication"""
+        client_ip = request.httprequest.remote_addr
+        user_agent = request.httprequest.headers.get('User-Agent', '')
+        worker_id = context_data.get('worker_id')
+
+        # API Authentication
         api_key_obj = self._authenticate_api(request)
         if not api_key_obj:
+            _logger.warning(f"API authentication failed for username: {username}")
+            request.env['sunray.audit.log'].sudo().create_audit_event(
+                event_type='security.passkey.unauthorized_api',
+                details={
+                    'username': username,
+                    'ip_address': client_ip,
+                    'user_agent': user_agent,
+                    'endpoint': f'/users/{username}/passkeys'
+                },
+                severity='critical',
+                ip_address=client_ip,
+                user_agent=user_agent
+            )
             return self._error_response('Unauthorized', 401)
-        
-        # Get JSON data
-        data = json.loads(request.httprequest.data)
-        username = data.get('username')
+
+        # Parse Request
+        _logger.debug("Parsing request JSON data")
+        try:
+            data = json.loads(request.httprequest.data)
+            _logger.debug(f"Request data keys: {list(data.keys())}")
+        except json.JSONDecodeError as e:
+            _logger.error(f"JSON decode error: {str(e)}")
+            # AUDIT: Log malformed request
+            request.env['sunray.audit.log'].sudo().create_audit_event(
+                event_type='security.passkey.invalid_json',
+                details={
+                    'username': username,
+                    'error': str(e),
+                    'worker_id': context_data.get('worker_id'),
+                    'raw_data_length': len(request.httprequest.data)
+                },
+                severity='warning',
+                sunray_worker=context_data.get('worker_id'),
+                ip_address=client_ip
+            )
+            return self._error_response('Invalid JSON', 400)
+
+        # Field Validation 
+        setup_token = data.get('setup_token')
         credential = data.get('credential')
-        challenge = data.get('challenge')
-        host_domain = data.get('host_domain')  # Domain requesting authentication
-        
-        if not all([username, credential, challenge]):
-            return self._error_response('Missing required fields', 400)
-        
-        # Find user
-        user_obj = request.env['sunray.user'].sudo().search([
-            ('username', '=', username),
-            ('is_active', '=', True)
-        ])
-        
-        if not user_obj:
-            return self._error_response('User not found', 404)
-        
-        # Check if user is authorized for this specific host
-        if host_domain:
-            host_obj = request.env['sunray.host'].sudo().search([
-                ('domain', '=', host_domain),
-                ('is_active', '=', True)
-            ])
-            
-            if host_obj and user_obj not in host_obj.user_ids:
-                return self._error_response('User not authorized for this host', 403)
-        
-        # For MVP, we'll do basic verification
-        # In production, this should verify the signature using the public key
-        credential_id = credential.get('id')
-        
-        # Validate host_domain is provided
-        if not host_domain:
-            return self._error_response('host_domain is required for authentication', 400)
+        host_domain = data.get('host_domain')
+        device_name = data.get('name', 'Passkey')
 
-        # Find matching passkey that is bound to the requesting host
-        passkey_obj = request.env['sunray.passkey'].sudo().search([
-            ('user_id', '=', user_obj.id),
-            ('credential_id', '=', credential_id),
-            ('host_domain', '=', host_domain)  # CRITICAL: Verify domain binding
-        ])
+        # Check required fields
+        missing_fields = []
+        if not setup_token:
+            missing_fields.append('setup_token')
+        if not credential:
+            missing_fields.append('credential')
+        if not host_domain:
+            missing_fields.append('host_domain')
+
+        if missing_fields:
+            # AUDIT: Log missing required fields
+            request.env['sunray.audit.log'].sudo().create_audit_event(
+                event_type='security.passkey.missing_fields',
+                details={
+                    'username': username,
+                    'missing_fields': missing_fields,
+                    'provided_fields': list(data.keys()),
+                    'host_domain': host_domain or 'not_provided',
+                    'worker_id': context_data.get('worker_id')
+                },
+                severity='warning',
+                sunray_worker=context_data.get('worker_id'),
+                ip_address=client_ip,
+                username=username
+            )
+            return self._error_response(f'Missing required fields: {", ".join(missing_fields)}', 400)
+
+        # Extract credential details
+        credential_id = credential.get('id') or data.get('credential_id')
+        public_key = credential.get('public_key', '').strip()
         
-        if not passkey_obj:
-            # Check if passkey exists but for wrong domain or no domain
-            wrong_domain_passkey = request.env['sunray.passkey'].sudo().search([
-                ('user_id', '=', user_obj.id),
-                ('credential_id', '=', credential_id)
-            ])
+        if not credential_id:
+            return self._error_response('Credential ID required', 400)
+        
+        if not public_key:
+            return self._error_response('Public key is required for passkey registration', 400)
+
+        # ========== Use Model Method for All Business Logic ==========
+        try:
+            result = request.env['sunray.passkey'].register_with_setup_token(
+                username=username,
+                setup_token=setup_token,
+                credential_id=credential_id,
+                public_key=public_key,
+                host_domain=host_domain,
+                device_name=device_name,
+                client_ip=client_ip,
+                user_agent=user_agent,
+                worker_id=worker_id
+            )
             
-            if wrong_domain_passkey:
-                # Log security event for domain mismatch (including empty domain)
-                request.env['sunray.audit.log'].sudo().create_audit_event(
-                    event_type='security.passkey_domain_mismatch',
-                    details={
-                        'username': username,
-                        'credential_id': credential_id,
-                        'requested_domain': host_domain,
-                        'registered_domain': wrong_domain_passkey.host_domain or 'empty',
-                        'user_agent': request.httprequest.headers.get('User-Agent')
-                    },
-                    severity='critical',
-                    sunray_user_id=user_obj.id,
-                    ip_address=data.get('client_ip'),
-                    username=username
-                )
-                # Return generic error - don't reveal if it's legacy or wrong domain
-                return self._error_response('Invalid credential', 404)
+            # Success response
+            return self._json_response({
+                'success': True,
+                'passkey_id': result['passkey_id'],
+                'message': 'Passkey registered successfully'
+            })
             
-            return self._error_response('Invalid credential', 404)
-        
-        # Update last used timestamp
-        passkey_obj.last_used = fields.Datetime.now()
-        
-        # Setup request context and log successful authentication
-        context_data = self._setup_request_context(request)
-        request.env['sunray.audit.log'].sudo().create_user_event(
-            event_type='auth.success',
-            details={'credential_id': credential_id},
-            sunray_user_id=user_obj.id,
-            sunray_worker=context_data['worker_id'],
-            ip_address=data.get('client_ip'),
-            username=username  # Keep for compatibility
-        )
-        
-        return self._json_response({
-            'success': True,
-            'user': {
-                'id': user_obj.id,
-                'username': user_obj.username,
-                'email': user_obj.email,
-                'display_name': user_obj.display_name
-            }
-        })
+        except (UserError, ValidationError) as e:
+            # Parse status code from message format: "STATUS|message"
+            msg = str(e)
+            parts = msg.split('|', 1)  # Split only on first pipe
+            
+            if len(parts) == 2 and parts[0].isdigit():
+                status = int(parts[0])
+                message = parts[1]
+            else:
+                status = 400  # Default for unparseable format
+                message = msg
+            
+            return self._error_response(message, status)
+        except IntegrityError as e:
+            # Database constraint violation (e.g., unique constraint)
+            _logger.error(f"Integrity error during passkey creation: {str(e)}")
+            request.env['sunray.audit.log'].sudo().create_audit_event(
+                event_type='security.passkey.integrity_error',
+                details={
+                    'username': username,
+                    'host_domain': host_domain,
+                    'error': str(e),
+                    'worker_id': worker_id
+                },
+                severity='critical',
+                sunray_worker=worker_id,
+                ip_address=client_ip,
+                username=username
+            )
+            return self._error_response('Registration failed', 500)
+        except Exception as e:
+            # Unexpected error
+            _logger.error(f"Unexpected error during passkey registration: {str(e)}")
+            request.env['sunray.audit.log'].sudo().create_audit_event(
+                event_type='security.passkey.unexpected_error',
+                details={
+                    'username': username,
+                    'host_domain': host_domain,
+                    'error': str(e),
+                    'worker_id': worker_id
+                },
+                severity='critical',
+                sunray_worker=worker_id,
+                ip_address=client_ip,
+                username=username
+            )
+            return self._error_response('Registration failed', 500)
     
     @http.route('/sunray-srvr/v1/sessions', type='http', auth='none', methods=['POST'], cors='*', csrf=False)
     def create_session(self, **kwargs):
