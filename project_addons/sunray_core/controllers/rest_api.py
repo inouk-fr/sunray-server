@@ -653,15 +653,15 @@ class SunrayRESTController(http.Controller):
             return self._error_response('Invalid JSON', 400)
 
         # Field Validation 
-        setup_token = data.get('setup_token')
+        setup_token_hash = data.get('setup_token_hash')
         credential = data.get('credential')
         host_domain = data.get('host_domain')
         device_name = data.get('name', 'Passkey')
 
         # Check required fields
         missing_fields = []
-        if not setup_token:
-            missing_fields.append('setup_token')
+        if not setup_token_hash:
+            missing_fields.append('setup_token_hash')
         if not credential:
             missing_fields.append('credential')
         if not host_domain:
@@ -699,7 +699,7 @@ class SunrayRESTController(http.Controller):
         try:
             result = request.env['sunray.passkey'].register_with_setup_token(
                 username=username,
-                setup_token=setup_token,
+                setup_token_hash=setup_token_hash,
                 credential_id=credential_id,
                 public_key=public_key,
                 host_domain=host_domain,

@@ -94,7 +94,7 @@ class SunrayPasskey(models.Model):
         return True
     
     @api.model
-    def register_with_setup_token(self, username, setup_token, credential_id, public_key, host_domain, 
+    def register_with_setup_token(self, username, setup_token_hash, credential_id, public_key, host_domain, 
                                   device_name='Passkey', client_ip=None, user_agent=None, worker_id=None):
         """
         Register a new passkey with comprehensive security validation.
@@ -112,8 +112,8 @@ class SunrayPasskey(models.Model):
         missing_fields = []
         if username is None:
             missing_fields.append('username')
-        if setup_token is None:
-            missing_fields.append('setup_token')
+        if setup_token_hash is None:
+            missing_fields.append('setup_token_hash')
         if credential_id is None:
             missing_fields.append('credential_id')
         if host_domain is None:
@@ -126,7 +126,7 @@ class SunrayPasskey(models.Model):
                 details={
                     'username': username,
                     'missing_fields': missing_fields,
-                    'provided_fields': [f for f in ['username', 'setup_token', 'credential_id', 'public_key', 'host_domain'] if f not in missing_fields],
+                    'provided_fields': [f for f in ['username', 'setup_token_hash', 'credential_id', 'public_key', 'host_domain'] if f not in missing_fields],
                     'host_domain': host_domain or 'not_provided',
                     'worker_id': worker_id
                 },
@@ -195,20 +195,19 @@ class SunrayPasskey(models.Model):
             )
             raise UserError('404|User is inactive')
         
-        # Setup Token Validation
-        _logger.debug(f"Validating setup token for user {username}")
-        token_hash = f"sha512:{hashlib.sha512(setup_token.encode()).hexdigest()}"
+        # Setup Token Hash Validation
+        _logger.debug(f"Validating setup token hash for user {username}")
         
         token_obj = self.env['sunray.setup.token'].sudo().search([
-            ('token_hash', '=', token_hash),
+            ('token_hash', '=', setup_token_hash),
             ('user_id', '=', user_obj.id)
         ], limit=1)
         
         if not token_obj:
-            _logger.warning(f"Invalid setup token for user {username}")
-            # AUDIT: Log invalid token
+            _logger.warning(f"Invalid setup token hash for user {username}")
+            # AUDIT: Log invalid token hash
             self.env['sunray.audit.log'].sudo().create_audit_event(
-                event_type='security.passkey.token_not_found',
+                event_type='security.passkey.setup_token_not_found',
                 details={
                     'username': username,
                     'user_id': user_obj.id,
@@ -220,7 +219,7 @@ class SunrayPasskey(models.Model):
                 ip_address=client_ip,
                 username=username
             )
-            raise UserError('401|Invalid setup token')
+            raise UserError('401|Invalid setup token hash')
         
         # Check token expiry
         if token_obj.expires_at < now:

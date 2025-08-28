@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
 from odoo.tests import TransactionCase, tagged
-from odoo.exceptions import ValidationError
+from odoo.exceptions import ValidationError, UserError
 from odoo import fields
 from psycopg2 import IntegrityError
 from datetime import datetime, timedelta
 import json
 import hashlib
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 @tagged('sunray', 'security', 'passkey')
@@ -68,11 +71,15 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         token_obj = self.env['sunray.setup.token'].create(token_data)
         return token_obj, token_value
     
+    def get_token_hash(self, token_value):
+        """Helper to compute SHA-512 hash for tokens"""
+        return f"sha512:{hashlib.sha512(token_value.encode()).hexdigest()}"
+    
     def make_api_call(self, username, data, **kwargs):
         """Call the model method directly instead of HTTP controller"""
         try:
             # Extract parameters from test data
-            setup_token = data.get('setup_token')
+            setup_token_hash = data.get('setup_token_hash')
             credential = data.get('credential', {})
             credential_id = credential.get('id')
             public_key = credential.get('public_key', '')
@@ -82,7 +89,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
             # Call the model method
             result = self.env['sunray.passkey'].register_with_setup_token(
                 username=username,
-                setup_token=setup_token,
+                setup_token_hash=setup_token_hash,
                 credential_id=credential_id,
                 public_key=public_key,
                 host_domain=host_domain,
@@ -101,6 +108,9 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
             # Parse status code from message format: "STATUS|message"
             msg = str(e)
             parts = msg.split('|', 1)  # Split only on first pipe
+            
+            # Always log exception details for debugging
+            _logger.info(f"TEST_DEBUG: Exception - Type: {type(e).__name__}, Message: {repr(msg)}, Parts: {parts}")
             
             if len(parts) == 2 and parts[0].isdigit():
                 status = int(parts[0])
@@ -125,9 +135,10 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         initial_passkey_count = self.env['sunray.passkey'].search_count([])
         initial_audit_count = self.env['sunray.audit.log'].search_count([])
         
-        # Make API call
+        # Make API call with hash
+        token_hash = f"sha512:{hashlib.sha512(token_value.encode()).hexdigest()}"
         response = self.make_api_call('test@example.com', {
-            'setup_token': token_value,
+            'setup_token_hash': token_hash,
             'credential': {
                 'id': 'cred_success_123',
                 'public_key': 'pubkey_success_123'
@@ -192,10 +203,10 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         # is handled at the controller level, not the model level
         self.skipTest("Test requires HTTP controller context (API key validation)")
     
-    def test_03_missing_setup_token(self):
-        """Test missing setup token field"""
+    def test_03_missing_setup_token_hash(self):
+        """Test missing setup token hash field"""
         response = self.make_api_call('test@example.com', {
-            # Missing setup_token
+            # Missing setup_token_hash
             'credential': {
                 'id': 'cred_missing',
                 'public_key': 'pubkey_test'
@@ -206,7 +217,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         # Verify error
         self.assertEqual(response['status'], 400)
         self.assertIn('Missing required fields', response['data']['error'])
-        self.assertIn('setup_token', response['data']['error'])
+        self.assertIn('setup_token_hash', response['data']['error'])
         
         # Verify audit log
         audit_log = self.env['sunray.audit.log'].search([
@@ -217,15 +228,16 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
             details = json.loads(audit_log.details)
         else:
             details = audit_log.details
-        self.assertIn('setup_token', details['missing_fields'])
+        self.assertIn('setup_token_hash', details['missing_fields'])
     
-    def test_04_invalid_token(self):
-        """Test invalid token prevents registration"""
-        # Create token but use wrong value
+    def test_04_invalid_token_hash(self):
+        """Test invalid token hash prevents registration"""
+        # Create token but use wrong hash
         token_obj, _ = self.create_test_token(token_value='correct_token')
+        wrong_hash = f"sha512:{hashlib.sha512('wrong_token'.encode()).hexdigest()}"
         
         response = self.make_api_call('test@example.com', {
-            'setup_token': 'wrong_token',
+            'setup_token_hash': wrong_hash,
             'credential': {
                 'id': 'cred_invalid_token',
                 'public_key': 'pubkey_test'
@@ -235,7 +247,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         
         # Verify error
         self.assertEqual(response['status'], 401)
-        self.assertEqual(response['data']['error'], 'Invalid setup token')
+        self.assertEqual(response['data']['error'], 'Invalid setup token hash')
         
         # Verify no passkey
         self.assertFalse(self.env['sunray.passkey'].search([
@@ -248,7 +260,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         
         # Verify audit
         audit_log = self.env['sunray.audit.log'].search([
-            ('event_type', '=', 'security.passkey.token_not_found')
+            ('event_type', '=', 'security.passkey.setup_token_not_found')
         ], limit=1, order='create_date desc')
         self.assertTrue(audit_log)
         self.assertEqual(audit_log.severity, 'critical')
@@ -260,7 +272,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         )
         
         response = self.make_api_call('test@example.com', {
-            'setup_token': token_value,
+            'setup_token_hash': f"sha512:{hashlib.sha512(token_value.encode()).hexdigest()}",
             'credential': {
                 'id': 'cred_expired',
                 'public_key': 'pubkey_test'
@@ -288,8 +300,9 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         token_obj, token_value = self.create_test_token()
         
         # First use - success
+        token_hash = f"sha512:{hashlib.sha512(token_value.encode()).hexdigest()}"
         response1 = self.make_api_call('test@example.com', {
-            'setup_token': token_value,
+            'setup_token_hash': token_hash,
             'credential': {
                 'id': 'cred_first',
                 'public_key': 'pubkey_first'
@@ -304,7 +317,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         
         # Second use - should fail
         response2 = self.make_api_call('test@example.com', {
-            'setup_token': token_value,
+            'setup_token_hash': token_hash,
             'credential': {
                 'id': 'cred_replay',
                 'public_key': 'pubkey_replay'
@@ -341,7 +354,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         token_obj, token_value = self.create_test_token(host_id=other_host.id)
         
         response = self.make_api_call('test@example.com', {
-            'setup_token': token_value,
+            'setup_token_hash': f"sha512:{hashlib.sha512(token_value.encode()).hexdigest()}",
             'credential': {
                 'id': 'cred_wronghost',
                 'public_key': 'pubkey_wronghost'
@@ -372,8 +385,9 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         )
         
         # Call from allowed IP
+        token_hash = f"sha512:{hashlib.sha512(token_value.encode()).hexdigest()}"
         response1 = self.make_api_call('test@example.com', {
-            'setup_token': token_value,
+            'setup_token_hash': token_hash,
             'credential': {
                 'id': 'cred_ip_allowed',
                 'public_key': 'pubkey_ip_allowed'
@@ -387,7 +401,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         
         # Call from blocked IP
         response2 = self.make_api_call('test@example.com', {
-            'setup_token': token_value,
+            'setup_token_hash': token_hash,
             'credential': {
                 'id': 'cred_ip_blocked',
                 'public_key': 'pubkey_ip_blocked'
@@ -425,7 +439,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         token_obj, token_value = self.create_test_token()
         
         response = self.make_api_call('test@example.com', {
-            'setup_token': token_value,
+            'setup_token_hash': f"sha512:{hashlib.sha512(token_value.encode()).hexdigest()}",
             'credential': {
                 'id': 'cred_duplicate',  # Same ID!
                 'public_key': 'pubkey_duplicate_attempt'
@@ -459,8 +473,9 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         token_obj, token_value = self.create_test_token(max_uses=3)
         
         # Use 1: Success
+        token_hash = f"sha512:{hashlib.sha512(token_value.encode()).hexdigest()}"
         response1 = self.make_api_call('test@example.com', {
-            'setup_token': token_value,
+            'setup_token_hash': token_hash,
             'credential': {
                 'id': 'cred_multi_1',
                 'public_key': 'pubkey_multi_1'
@@ -474,7 +489,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         
         # Use 2: Success
         response2 = self.make_api_call('test@example.com', {
-            'setup_token': token_value,
+            'setup_token_hash': token_hash,
             'credential': {
                 'id': 'cred_multi_2',
                 'public_key': 'pubkey_multi_2'
@@ -488,7 +503,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         
         # Use 3: Success and consume
         response3 = self.make_api_call('test@example.com', {
-            'setup_token': token_value,
+            'setup_token_hash': token_hash,
             'credential': {
                 'id': 'cred_multi_3',
                 'public_key': 'pubkey_multi_3'
@@ -502,7 +517,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         
         # Use 4: Fail
         response4 = self.make_api_call('test@example.com', {
-            'setup_token': token_value,
+            'setup_token_hash': token_hash,
             'credential': {
                 'id': 'cred_multi_4',
                 'public_key': 'pubkey_multi_4'
@@ -526,7 +541,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         
         # Call with credential missing public_key
         response = self.make_api_call('test@example.com', {
-            'setup_token': token_value,
+            'setup_token_hash': f"sha512:{hashlib.sha512(token_value.encode()).hexdigest()}",
             'credential': {
                 'id': 'cred_no_pubkey'
                 # public_key is missing!
@@ -569,7 +584,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         
         # Call with empty public_key
         response = self.make_api_call('test@example.com', {
-            'setup_token': token_value,
+            'setup_token_hash': f"sha512:{hashlib.sha512(token_value.encode()).hexdigest()}",
             'credential': {
                 'id': 'cred_empty_pubkey',
                 'public_key': ''  # Empty string
@@ -605,7 +620,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         
         # Call with whitespace-only public_key
         response = self.make_api_call('test@example.com', {
-            'setup_token': token_value,
+            'setup_token_hash': f"sha512:{hashlib.sha512(token_value.encode()).hexdigest()}",
             'credential': {
                 'id': 'cred_whitespace_pubkey',
                 'public_key': '   \t\n   '  # Only whitespace
@@ -631,9 +646,10 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
     
     def test_14_complete_audit_trail(self):
         """Test comprehensive audit trail for security investigation"""
-        # Attempt 1: Wrong token
+        # Attempt 1: Wrong token hash
+        wrong_hash = f"sha512:{hashlib.sha512('wrong_token'.encode()).hexdigest()}"
         self.make_api_call('test@example.com', {
-            'setup_token': 'wrong_token',
+            'setup_token_hash': wrong_hash,
             'credential': {
                 'id': 'cred_audit_1',
                 'public_key': 'pubkey_audit_1'
@@ -647,7 +663,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
             expires_at=fields.Datetime.now() - timedelta(hours=1)
         )
         self.make_api_call('test@example.com', {
-            'setup_token': expired_value,
+            'setup_token_hash': f"sha512:{hashlib.sha512(expired_value.encode()).hexdigest()}",
             'credential': {
                 'id': 'cred_audit_2',
                 'public_key': 'pubkey_audit_2'
@@ -657,8 +673,9 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         
         # Attempt 3: Success
         good_token, good_value = self.create_test_token(token_value='good_token_12345')
+        good_hash = f"sha512:{hashlib.sha512(good_value.encode()).hexdigest()}"
         self.make_api_call('test@example.com', {
-            'setup_token': good_value,
+            'setup_token_hash': good_hash,
             'credential': {
                 'id': 'cred_audit_3',
                 'public_key': 'pubkey_audit_3'
@@ -668,7 +685,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         
         # Attempt 4: Replay attack
         self.make_api_call('test@example.com', {
-            'setup_token': good_value,
+            'setup_token_hash': good_hash,
             'credential': {
                 'id': 'cred_audit_4',
                 'public_key': 'pubkey_audit_4'
@@ -693,7 +710,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         # Verify event sequence
         self.assertGreaterEqual(len(security_events), 4)
         event_types = [log.event_type for log in security_events[-4:]]
-        self.assertIn('security.passkey.token_not_found', event_types)
+        self.assertIn('security.passkey.setup_token_not_found', event_types)
         self.assertIn('security.passkey.token_expired', event_types)
         self.assertIn('passkey.registered', event_types)
         self.assertIn('security.passkey.token_already_consumed', event_types)

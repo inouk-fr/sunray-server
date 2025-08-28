@@ -503,13 +503,13 @@ The `/config/register` endpoint handles all migration logic:
 **Request Body**:
 ```json
 {
-  "setup_token": "actual_token_value",     // REQUIRED: Raw setup token (not hash)
-  "credential": {                          // REQUIRED: WebAuthn credential object
-    "id": "credential_id",                 // REQUIRED: Unique credential identifier
-    "public_key": "base64_public_key"      // REQUIRED: Public key data (fundamental for WebAuthn)
+  "setup_token_hash": "sha512:3c9909afbf37f3d...", // REQUIRED: SHA-512 hash of setup token
+  "credential": {                                   // REQUIRED: WebAuthn credential object
+    "id": "credential_id",                          // REQUIRED: Unique credential identifier
+    "public_key": "base64_public_key"               // REQUIRED: Public key data (fundamental for WebAuthn)
   },
-  "host_domain": "app.example.com",        // REQUIRED: Target host domain
-  "name": "My Device"                      // Optional: Device name (default: "Passkey")
+  "host_domain": "app.example.com",                 // REQUIRED: Target host domain
+  "name": "My Device"                               // Optional: Device name (default: "Passkey")
 }
 ```
 
@@ -518,9 +518,9 @@ The `/config/register` endpoint handles all migration logic:
 **Validation Flow**:
 1. API key authentication
 2. JSON request parsing
-3. Required field validation (setup_token, credential, host_domain)
+3. Required field validation (setup_token_hash, credential, host_domain)
 4. User existence and active status
-5. Setup token validation (SHA-512 hash comparison)
+5. Setup token hash validation (direct hash comparison)
 6. Token expiry check
 7. Token consumption status
 8. Token usage limit
@@ -582,12 +582,15 @@ All registration attempts are logged with comprehensive details:
 
 **Example**:
 ```bash
+# First compute the hash (in worker code):
+# setup_token_hash = "sha512:" + hashlib.sha512("abc123def456".encode()).hexdigest()
+
 curl -X POST https://sunray.example.com/sunray-srvr/v1/users/user@example.com/passkeys \
   -H "Authorization: Bearer your_api_key" \
   -H "Content-Type: application/json" \
   -H "X-Worker-ID: worker-001" \
   -d '{
-    "setup_token": "abc123def456",
+    "setup_token_hash": "sha512:3c9909afbf37f3d3bd054c1f8a9c8f5a2b4e6d8f9a1b2c3d4e5f6a7b8c9d0e1f2",
     "credential": {
       "id": "YmFzZTY0X2NyZWRlbnRpYWxfaWQ=",
       "public_key": "YmFzZTY0X3B1YmxpY19rZXk="

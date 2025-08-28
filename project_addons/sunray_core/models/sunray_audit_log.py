@@ -91,7 +91,7 @@ class SunrayAuditLog(models.Model):
         ('security.passkey.invalid_json', 'Passkey Invalid JSON'),
         ('security.passkey.missing_fields', 'Passkey Missing Fields'),
         ('security.passkey.user_not_found', 'Passkey User Not Found'),
-        ('security.passkey.token_not_found', 'Passkey Token Not Found'),
+        ('security.passkey.setup_token_not_found', 'Passkey Setup Token Not Found'),
         ('security.passkey.token_expired', 'Passkey Token Expired'),
         ('security.passkey.token_already_consumed', 'Passkey Token Already Consumed'),
         ('security.passkey.token_usage_exceeded', 'Passkey Token Usage Exceeded'),
