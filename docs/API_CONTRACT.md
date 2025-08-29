@@ -510,6 +510,115 @@ The `/config/register` endpoint handles all migration logic:
 - Get user configuration version for cache invalidation
 - Access passkey information for authentication and security monitoring
 
+## Setup Token Management
+
+### POST /sunray-srvr/v1/setup-tokens/validate
+
+**Purpose**: Validate a setup token before WebAuthn registration ceremony.
+
+**Use Case**: Workers call this endpoint when a user clicks "Create Passkeys" to validate the token before initiating the WebAuthn registration process. This provides early feedback and better user experience by catching invalid tokens before the WebAuthn ceremony.
+
+**Authentication**: Requires valid API key and Worker ID.
+
+**Request Headers**:
+- `Authorization: Bearer {api_key}` - Required API key for authentication
+- `X-Worker-ID: {worker_id}` - Required worker identifier for tracking
+- `Content-Type: application/json` - Required
+
+**Request Body**:
+```json
+{
+  "username": "john.doe@example.com",
+  "token_hash": "sha512:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730",
+  "client_ip": "192.168.1.100", 
+  "host_domain": "app.example.com"
+}
+```
+
+**Response** (Valid Token - 200 OK):
+```json
+{
+  "valid": true
+}
+```
+
+**Response** (Invalid Token - 200 OK):
+```json
+{
+  "valid": false
+}
+```
+
+**Request Body Fields**:
+- `username` (string, required): Username associated with the token
+- `token_hash` (string, required): SHA-512 hash of setup token, prefixed with "sha512:"
+- `client_ip` (string, required): Client IP address for CIDR validation
+- `host_domain` (string, required): Domain being protected
+
+**Validation Performed**:
+1. API key and worker authentication
+2. User existence and active status
+3. Token hash lookup and user association
+4. Token expiry validation
+5. Token consumption status check
+6. Token usage limit enforcement
+7. Host domain validation and matching
+8. CIDR IP address restrictions (if configured on token)
+
+**Error Conditions**:
+All validation failures return `{"valid": false}` with appropriate audit logging:
+- User not found or inactive
+- Token hash not found or invalid
+- Token expired or already consumed
+- Token usage limit exceeded
+- Host domain unknown or mismatch
+- IP address outside allowed CIDRs
+
+**Security Features**:
+- Comprehensive audit logging for all validation attempts
+- No sensitive information exposed in responses
+- IP-based access restrictions (if configured)
+- Request correlation tracking via Worker ID
+
+**Example Usage**:
+```bash
+curl -X POST https://sunray-server.example.com/sunray-srvr/v1/setup-tokens/validate \
+  -H "Authorization: Bearer YOUR_ADMIN_API_KEY" \
+  -H "X-Worker-ID: sunray-worker-prod" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "john.doe@example.com",
+    "token_hash": "sha512:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730",
+    "client_ip": "192.168.1.100",
+    "host_domain": "app.example.com"
+  }'
+```
+
+**Token Hash Generation**:
+The token hash is computed by workers as follows:
+```javascript
+// If user's setup token is "ABCD-1234-EFGH-5678"
+const crypto = require('crypto');
+const token = "ABCD-1234-EFGH-5678";
+const hash = crypto.createHash('sha512').update(token).digest('hex');
+const token_hash = `sha512:${hash}`;
+```
+
+**Audit Events Generated**:
+- `token.validation.success` - Token validation succeeded
+- `token.validation.user_not_found` - User doesn't exist
+- `token.validation.user_inactive` - User is inactive
+- `token.validation.token_not_found` - Invalid token hash
+- `token.validation.expired` - Token has expired
+- `token.validation.consumed` - Token already used
+- `token.validation.usage_exceeded` - Token usage limit reached
+- `token.validation.unknown_host` - Host domain not found
+- `token.validation.host_mismatch` - Token not for requested host
+- `token.validation.ip_restricted` - IP not in allowed CIDRs
+- `token.validation.system_error` - Unexpected system error
+
+## Passkey Management
+
 ### POST /sunray-srvr/v1/users/{username}/passkeys
 
 **Purpose**: Register a new passkey for a user with mandatory setup token validation.
@@ -698,7 +807,13 @@ curl -X POST https://sunray.example.com/sunray-srvr/v1/users/user@example.com/pa
 ```
 
 **Field Descriptions**:
-- `counter` (integer, optional): WebAuthn authentication counter for replay attack prevention. Must be greater than the current stored counter value. If provided with a valid `credential_id`, the passkey's counter and last_used timestamp will be updated.
+- `counter` (integer, optional): WebAuthn authentication counter for replay attack prevention. 
+  - **Expected values**: Must be strictly greater than the passkey's current stored counter (not equal)
+  - **Minimum increment**: Current counter + 1
+  - **Valid range**: Any positive integer > current counter (up to 2,147,483,647)
+  - **Initial value**: Passkeys start with counter = 0 upon registration
+  - **Security**: Counter MUST increase on each authentication per WebAuthn specification
+  - If provided with a valid `credential_id`, updates the passkey's counter and last_used timestamp
 
 **Response**:
 ```json
@@ -716,8 +831,19 @@ curl -X POST https://sunray.example.com/sunray-srvr/v1/users/user@example.com/pa
   }
   ```
 
+**Counter Examples**:
+If the passkey's current counter is 41:
+- `"counter": 42` ✅ Valid (minimum increment)
+- `"counter": 50` ✅ Valid (larger increment allowed)
+- `"counter": 41` ❌ Invalid (must be greater, not equal)
+- `"counter": 40` ❌ Invalid (rollback not allowed)
+- `"counter": 0`  ❌ Invalid (reset not allowed)
+
 **Security Notes**:
 - The `counter` field implements WebAuthn replay attack prevention
+- Counter violations trigger critical security audit events (`security.passkey.counter_violation`)
+- Each passkey maintains its own independent counter
+- Counter rollback or stagnation may indicate credential cloning or replay attacks
 - Counter must always increase with each authentication
 - Counter violations are logged as critical security events
 - If `counter` is provided without `credential_id`, it will be ignored
