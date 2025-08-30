@@ -938,10 +938,18 @@ class SunrayRESTController(http.Controller):
             return self._error_response('expires_at is required', 400)
         
         try:
-            # Parse ISO 8601 datetime from worker
-            expires_at = fields.Datetime.from_string(expires_at_str)
-        except ValueError:
-            return self._error_response('Invalid expires_at format, expected ISO 8601', 400)
+            # Parse ISO 8601 datetime using dateutil for proper ISO 8601 support
+            from dateutil.parser import isoparse
+            expires_at_dt = isoparse(expires_at_str)
+            
+            # Odoo requires naive datetime (no timezone info)
+            if expires_at_dt.tzinfo:
+                expires_at = expires_at_dt.replace(tzinfo=None)
+            else:
+                expires_at = expires_at_dt
+                
+        except (ValueError, TypeError) as e:
+            return self._error_response(f'Invalid expires_at format, expected ISO 8601: {str(e)}', 400)
         
         # Create session with passkey link
         session_obj = request.env['sunray.session'].sudo().create({

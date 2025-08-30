@@ -807,7 +807,14 @@ curl -X POST https://sunray.example.com/sunray-srvr/v1/users/user@example.com/pa
 ```
 
 **Field Descriptions**:
-- `expires_at` (string, required): ISO 8601 datetime when session expires. Worker calculates this based on its configuration.
+- `expires_at` (string, required): Session expiration datetime. Worker calculates this based on its configuration.
+  - **Supported formats**: Any ISO 8601 format including:
+    - `2024-01-01T20:00:00Z` (recommended - UTC with indicator)
+    - `2024-01-01T20:00:00` (basic ISO 8601)
+    - `2024-01-01T20:00:00+00:00` (with timezone offset)
+    - `2024-01-01T20:00:00.123456Z` (with microseconds)
+    - `2024-01-01 20:00:00` (Odoo format - backward compatibility)
+  - **Timezone handling**: Timezone information is automatically stripped (server stores as naive datetime)
 - `counter` (integer, required): WebAuthn authentication counter value managed by worker. Server stores for debugging and audit purposes.
   - Worker is responsible for counter validation per WebAuthn specification
   - Server updates passkey counter and last_used timestamp if credential_id provided

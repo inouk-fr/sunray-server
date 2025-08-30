@@ -360,3 +360,117 @@ class TestPasskeyCounter(TransactionCase):
             self.passkey_obj.last_used = now
             self.passkey_obj.invalidate_recordset()
             self.assertEqual(self.passkey_obj.last_used, now)
+
+    def test_08_session_creation_accepts_various_iso8601_formats(self):
+        """Test session creation accepts various ISO 8601 datetime formats"""
+        
+        test_formats = [
+            '2024-01-01T20:00:00',           # ISO 8601 basic (T separator)
+            '2024-01-01T20:00:00Z',          # ISO 8601 with UTC indicator
+            '2024-01-01T20:00:00+00:00',     # ISO 8601 with UTC offset
+            '2024-01-01T20:00:00-05:00',     # ISO 8601 with timezone offset
+            '2024-01-01T20:00:00.123456',    # ISO 8601 with microseconds
+            '2024-01-01T20:00:00.123456Z',   # ISO 8601 with microseconds and UTC
+            '2024-01-01 20:00:00',           # Odoo format (backward compatibility)
+        ]
+        
+        from odoo.http import request
+        from unittest.mock import Mock
+        
+        for i, expires_at_format in enumerate(test_formats):
+            with self.subTest(format=expires_at_format):
+                # Create unique session data for each test
+                session_data = {
+                    'session_id': f'test_session_iso8601_{i}',
+                    'username': self.user_obj.username,
+                    'host_domain': self.host_obj.domain,
+                    'expires_at': expires_at_format,
+                    'credential_id': self.passkey_obj.credential_id,
+                    'counter': 100 + i,  # Unique counter for each test
+                    'created_ip': f'192.168.1.{200 + i}',
+                    'user_agent': f'Test Browser ISO8601 {i}'
+                }
+                
+                mock_request = Mock()
+                mock_request.httprequest.data = json.dumps(session_data).encode()
+                mock_request.env = self.env
+                
+                controller = SunrayRESTController()
+                controller._authenticate_api = lambda r: self.api_key_obj
+                controller._setup_request_context = lambda r: {'worker_id': 'test_worker'}
+                
+                # Call session creation - should succeed for all formats
+                with patch('odoo.addons.sunray_core.controllers.rest_api.request', mock_request):
+                    response = controller.create_session()
+                
+                # Verify success response
+                response_data = json.loads(response.data.decode())
+                self.assertTrue(response_data.get('success'), 
+                               f"Format '{expires_at_format}' should be accepted")
+                
+                # Verify session was created
+                session_obj = self.env['sunray.session'].search([
+                    ('session_id', '=', session_data['session_id'])
+                ])
+                self.assertTrue(session_obj, 
+                               f"Session should be created for format '{expires_at_format}'")
+                
+                # Verify expires_at was parsed correctly (should be naive datetime)
+                self.assertIsNotNone(session_obj.expires_at)
+                self.assertIsNone(session_obj.expires_at.tzinfo,
+                                 f"expires_at should be naive datetime for format '{expires_at_format}'")
+                
+    def test_09_session_creation_invalid_datetime_formats(self):
+        """Test session creation rejects invalid datetime formats with helpful errors"""
+        
+        invalid_formats = [
+            'not-a-datetime',
+            '2024-13-01T20:00:00',  # Invalid month
+            '2024-01-32T20:00:00',  # Invalid day
+            '2024-01-01T25:00:00',  # Invalid hour
+            '2024/01/01 20:00:00',  # Wrong separators
+            '',                     # Empty string
+        ]
+        
+        from odoo.http import request
+        from unittest.mock import Mock
+        
+        for i, invalid_format in enumerate(invalid_formats):
+            with self.subTest(format=invalid_format):
+                session_data = {
+                    'session_id': f'test_session_invalid_{i}',
+                    'username': self.user_obj.username,
+                    'host_domain': self.host_obj.domain,
+                    'expires_at': invalid_format,
+                    'credential_id': self.passkey_obj.credential_id,
+                    'counter': 200 + i,
+                    'created_ip': f'192.168.1.{220 + i}',
+                    'user_agent': f'Test Browser Invalid {i}'
+                }
+                
+                mock_request = Mock()
+                mock_request.httprequest.data = json.dumps(session_data).encode()
+                mock_request.env = self.env
+                
+                controller = SunrayRESTController()
+                controller._authenticate_api = lambda r: self.api_key_obj
+                controller._setup_request_context = lambda r: {'worker_id': 'test_worker'}
+                
+                # Call session creation - should fail
+                with patch('odoo.addons.sunray_core.controllers.rest_api.request', mock_request):
+                    response = controller.create_session()
+                
+                # Verify error response
+                if hasattr(response, 'status_code'):
+                    self.assertEqual(response.status_code, 400)
+                elif hasattr(response, 'data'):
+                    response_data = json.loads(response.data.decode())
+                    self.assertFalse(response_data.get('success', True))
+                    self.assertIn('Invalid expires_at format', response_data.get('error', ''))
+                
+                # Verify session was NOT created
+                session_obj = self.env['sunray.session'].search([
+                    ('session_id', '=', session_data['session_id'])
+                ])
+                self.assertFalse(session_obj, 
+                                f"Session should NOT be created for invalid format '{invalid_format}'")
