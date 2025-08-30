@@ -30,7 +30,8 @@ class SunrayAccessRule(models.Model):
         ('cidr', 'IP/CIDR Access'),
         ('token', 'Token Access')
     ], string='Access Type', required=True, default='public',
-       help='Type of access exception: public (no auth), CIDR (IP whitelist), or token (API/webhook)')
+       help='Type of access exception: public (no auth), CIDR (IP whitelist), or token (API/webhook). '
+            'For authenticated WebSocket connections, configure WebSocket URLs on the host instead.')
     
     # URL Pattern Configuration
     url_patterns = fields.Text(
@@ -40,7 +41,8 @@ class SunrayAccessRule(models.Model):
              'Examples:\n'
              '^/api/webhook\n'
              '^/public/.*\n'
-             '^/health$'
+             '^/health$\n'
+             '^/ws/public  # For **unauthenticated WebSocket access ONLY**'
     )
     
     # CIDR Configuration (for cidr type)
@@ -163,28 +165,32 @@ class SunrayAccessRule(models.Model):
     
     def get_worker_config(self):
         """Generate worker configuration for this access rule
-        
+
         Returns:
             dict: Worker configuration for this rule
         """
         self.ensure_one()
-        
+
         config = {
             'priority': self.priority,
             'access_type': self.access_type,
-            'url_patterns': self.get_url_patterns(),
             'description': self.description
         }
-        
+
+        # All access types use url_patterns
+        if self.access_type in ['public', 'cidr', 'token']:
+            config['url_patterns'] = self.get_url_patterns()
+
+        # Type-specific configurations
         if self.access_type == 'cidr':
             config['allowed_cidrs'] = self.get_allowed_cidrs()
-        
+
         elif self.access_type == 'token':
             config['tokens'] = []
             for token in self.token_ids.filtered('is_active'):
                 if token.is_valid():
                     config['tokens'].append(token.get_extraction_config())
-        
+
         return config
     
     @api.model

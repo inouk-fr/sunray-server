@@ -65,8 +65,8 @@
                     </group>
                     
                     <group string="URL Pattern Configuration">
-                        <field name="url_patterns" widget="text" nolabel="1" 
-                               placeholder="Regex patterns for URLs (one per line, # for comments)&#10;Examples:&#10;^/api/webhook.*&#10;^/public/.*&#10;^/health$"/>
+                        <field name="url_patterns" widget="text" nolabel="1"
+                               placeholder="Regex patterns for URLs (one per line, # for comments)&#10;For WebSocket rules: patterns match WebSocket upgrade request path&#10;Examples:&#10;^/api/webhook.*&#10;^/ws/chat/.*  # WebSocket path&#10;^/public/.*&#10;^/health$"/>
                     </group>
                     
                     <group string="Access Configuration" invisible="access_type == 'public'">
@@ -117,7 +117,8 @@
                 <strong>Access Types:</strong><br/>
                 • <span class="badge badge-success">Public</span>: No authentication required<br/>
                 • <span class="badge badge-info">CIDR</span>: IP address whitelist<br/>
-                • <span class="badge badge-warning">Token</span>: API/webhook token authentication
+                • <span class="badge badge-warning">Token</span>: API/webhook token authentication<br/>
+                • <span class="badge badge-primary">WebSocket</span>: WebSocket connections with origin validation
             </p>
         </field>
     </record>

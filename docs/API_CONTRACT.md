@@ -183,6 +183,7 @@ The `/config/register` endpoint handles all migration logic:
       "backend": "https://backend.example.com",
       "nb_authorized_users": 1,
       "session_duration_s": 3600,
+      "websocket_urls": ["^/ws/chat/.*", "^/ws/notifications"],
       "exceptions_tree": {
         "public_patterns": ["/health", "/status"],
         "cidr_rules": [
@@ -234,7 +235,8 @@ The `/config/register` endpoint handles all migration logic:
 - `backend`: Backend service URL to proxy to
 - `authorized_users`: List of usernames allowed access
 - `session_duration_s`: Session duration in seconds (always present, default: 3600)
-- `exceptions_tree`: Access rules for public, CIDR, token, and WebSocket-based access
+- `websocket_urls`: Array of regex patterns for authenticated WebSocket endpoints
+- `exceptions_tree`: Access rules for public, CIDR, and token-based access
 - `bypass_waf_for_authenticated`: Enable WAF bypass for authenticated users
 - `waf_bypass_revalidation_s`: WAF bypass cookie revalidation period in seconds (always present, default: 900)
 - `worker_id`: ID of the worker protecting this host (null if not yet bound)
@@ -269,6 +271,7 @@ The `/config/register` endpoint handles all migration logic:
     "backend": "https://backend.example.com",
     "authorized_users": ["user@example.com"],
     "session_duration_s": 3600,
+    "websocket_urls": ["^/ws/chat/.*", "^/ws/notifications"],
     "exceptions_tree": {
       "public_patterns": ["/health", "/status"],
       "cidr_rules": [
@@ -289,13 +292,6 @@ The `/config/register` endpoint handles all migration logic:
               "token_source": "header"
             }
           ]
-        }
-      ],
-      "websocket_rules": [
-        {
-          "priority": 150,
-          "patterns": ["^/ws/chat/.*", "^/ws/notifications"],
-          "description": "Real-time communication endpoints"
         }
       ]
     },
@@ -376,6 +372,7 @@ The `/config/register` endpoint handles all migration logic:
     "backend": "https://backend.example.com",
     "authorized_users": ["user@example.com"],
     "session_duration_s": 3600,
+    "websocket_urls": ["^/ws/chat/.*", "^/ws/notifications"],
     "exceptions_tree": {
       "public_patterns": ["/health", "/status"],
       "cidr_rules": [
@@ -396,13 +393,6 @@ The `/config/register` endpoint handles all migration logic:
               "token_source": "header"
             }
           ]
-        }
-      ],
-      "websocket_rules": [
-        {
-          "priority": 150,
-          "patterns": ["^/ws/chat/.*", "^/ws/notifications"],
-          "description": "Real-time communication endpoints"
         }
       ]
     },
@@ -1135,6 +1125,64 @@ INFO: Config updated for host example.com: session_duration_s=3600, waf_bypass_r
 INFO: Created session for user@example.com with duration 3600s, expires at 2024-01-01T13:00:00Z
 INFO: WAF bypass cookie refreshed for user@example.com, expires in 900s
 ERROR: Host example.com missing required field 'session_duration_s' in configuration
+```
+
+### **WebSocket URLs (`websocket_urls`)**
+
+#### **Purpose**
+The `websocket_urls` field defines URL patterns for authenticated WebSocket endpoints that require valid session cookies but should be upgraded to WebSocket protocol.
+
+#### **Format**
+- **Type**: Array of strings
+- **Pattern**: Regex patterns (same format as access rule URL patterns)
+- **Authentication**: All WebSocket URLs require valid session cookies
+- **Protocol**: Requests matching these patterns are upgraded to WebSocket
+
+#### **Usage**
+```json
+{
+  "websocket_urls": [
+    "^/ws/chat/.*",           // Chat WebSocket endpoints
+    "^/ws/notifications",     // Real-time notifications
+    "^/ws/api/realtime"       // Real-time API updates
+  ]
+}
+```
+
+#### **Worker Behavior**
+- **Authentication Check**: Validate session cookie before WebSocket upgrade
+- **Pattern Matching**: Use regex to match request paths
+- **Protocol Upgrade**: Allow WebSocket upgrade for authenticated requests
+- **Rejection**: Deny unauthenticated WebSocket connection attempts
+
+#### **Architectural Notes**
+- **Host-Level Configuration**: WebSocket URLs are configured per host, not in access rules
+- **Authentication Required**: Unlike access rules, WebSocket URLs always require authentication
+- **Unauthenticated WebSocket**: Use public access rules if unauthenticated WebSocket access is needed
+- **No Bypass**: WebSocket URLs cannot be bypassed - authentication is always required
+
+#### **Example Implementation**
+```javascript
+// Worker WebSocket handling
+if (isWebSocketUpgrade(request)) {
+  const path = new URL(request.url).pathname;
+  const isWebSocketPath = config.websocket_urls.some(pattern => 
+    new RegExp(pattern).test(path)
+  );
+  
+  if (isWebSocketPath) {
+    // Validate session cookie
+    const session = await validateSession(request);
+    if (session.valid) {
+      return upgradeToWebSocket(request);
+    } else {
+      return new Response('Unauthorized', { status: 401 });
+    }
+  }
+  
+  // Not a configured WebSocket path
+  return new Response('WebSocket not allowed', { status: 403 });
+}
 ```
 
 ## Worker Implementation Requirements

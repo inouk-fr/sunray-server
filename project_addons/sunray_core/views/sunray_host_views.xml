@@ -257,6 +257,11 @@
                                 <field name="session_duration_s"/>
                             </group>
                             
+                            <group string="WebSocket Configuration">
+                                <field name="websocket_urls" widget="text" nolabel="1"
+                                       placeholder="^/ws/chat/.*&#10;^/ws/notifications&#10;# WebSocket endpoints that require authentication"/>
+                            </group>
+                            
                             <group string="WAF Integration">
                                 <field name="bypass_waf_for_authenticated"/>
                                 <field name="waf_bypass_revalidation_s" invisible="not bypass_waf_for_authenticated"/>
