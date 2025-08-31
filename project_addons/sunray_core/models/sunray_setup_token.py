@@ -489,7 +489,7 @@ class SunraySetupToken(models.Model):
                 )
                 result.update({
                     'error_code': '403',
-                    'error_message': 'Token not valid for this host'
+                    'error_message': 'Token not valid for this host domain'
                 })
                 return result
             
