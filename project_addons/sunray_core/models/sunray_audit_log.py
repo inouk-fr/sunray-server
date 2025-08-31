@@ -51,6 +51,11 @@ class SunrayAuditLog(models.Model):
         ('config.fetched_invalid', 'Config fetched is Invalid'),
         ('config.session_duration_changed', 'Session Duration Changed'),
         ('config.waf_revalidation_changed', 'WAF Revalidation Changed'),
+        # Websocket Events
+        ('websocket.connection_initiated', 'WebSocket upgrade started'),
+        ('websocket.passthrough_success', 'WebSocket established'),
+        ('websocket.passthrough_failed', 'WebSocket Origin returned non-101 status code'),
+        ('websocket.connection_error', 'WebSocket Exception'),
         # Session Management Events
         ('session.created', 'Session Created'),
         ('session.revoked', 'Session Revoked'),
