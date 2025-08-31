@@ -754,6 +754,7 @@ class TestPasskeyRegistrationSecurity(TransactionCase):
         self.assertIn('token.validation.expired', event_types)
         self.assertIn('passkey.registered', event_types)
         self.assertIn('token.validation.consumed', event_types)
+        self.assertIn('passkey.cbor_validation_success', event_types)
 
 
 @tagged('sunray', 'model', 'users', 'passkeys')
