@@ -34,9 +34,11 @@ class SunrayHost(models.Model):
         help='Worker that protects this host. A host can be protected by only one worker, but a worker can protect several hosts.'
     )
     is_active = fields.Boolean(
-        string='Is Sunray Active?', 
+        string='Protection Enabled',
         default=True,
-        help='When disabled, host becomes publicly accessible through Worker route (no authentication required)'
+        help='Controls whether Sunray protection is active for this host. '
+             'When disabled, the Worker will block all traffic with 503 Service Unavailable. '
+             'Use Access Rules to configure public access instead of disabling protection.'
     )
     
     # Access Rules (new unified approach)
@@ -412,6 +414,46 @@ class SunrayHost(models.Model):
         # Use Access Rules system
         return self.env['sunray.access.rule'].generate_exceptions_tree(self.id)
     
+    def get_config_data(self):
+        """Generate configuration data for API endpoints
+        
+        This method consolidates host configuration data generation used by
+        multiple API endpoints (/config, /config/register, /config/<hostname>).
+        
+        Returns:
+            - Single dict when len(self) == 1
+            - List of dicts when len(self) > 1  
+            - {'hosts': []} when empty recordset
+            
+        The returned data is the union of all endpoint needs and includes
+        the is_active flag for worker decision making.
+        """
+        if not self:
+            return {'hosts': []}
+        
+        result = []
+        for host in self:
+            config = {
+                'domain': host.domain,
+                'is_active': host.is_active,  # NEW: Critical for worker blocking logic
+                'backend': host.backend_url,
+                'nb_authorized_users': len(host.user_ids.filtered(lambda u: u.is_active)),
+                'session_duration_s': host.session_duration_s,
+                'websocket_url_prefix': host.websocket_url_prefix,
+                'exceptions_tree': host.get_exceptions_tree(),
+                'bypass_waf_for_authenticated': host.bypass_waf_for_authenticated,
+                'waf_bypass_revalidation_s': host.waf_bypass_revalidation_s,
+                'config_version': host.config_version.isoformat() if host.config_version else None,
+                'worker_id': host.sunray_worker_id.id if host.sunray_worker_id else None,
+                'worker_name': host.sunray_worker_id.name if host.sunray_worker_id else None,
+            }
+            result.append(config)
+        
+        # Return format based on recordset size
+        if len(self) == 1:
+            return result[0]
+        else:
+            return result
     
     def write(self, vals):
         """Override to update config_version on any change and audit timing changes"""
@@ -436,6 +478,22 @@ class SunrayHost(models.Model):
                     event_type='config.waf_revalidation_changed',
                     severity='info',
                     details=f'WAF bypass revalidation period changed for host {record.domain}: {old_value}s → {new_value}s',
+                    admin_user_id=self.env.user.id
+                )
+                
+            # Log protection status changes (is_active)
+            if 'is_active' in vals and vals['is_active'] != record.is_active:
+                event_type = 'config.host.protection_enabled' if vals['is_active'] else 'config.host.protection_disabled'
+                self.env['sunray.audit.log'].create_admin_event(
+                    event_type=event_type,
+                    severity='warning',
+                    details={
+                        'host': record.domain,
+                        'previous_state': record.is_active,
+                        'new_state': vals['is_active'],
+                        'active_sessions': len(record.active_session_ids),
+                        'host_id': record.id
+                    },
                     admin_user_id=self.env.user.id
                 )
         

@@ -114,24 +114,21 @@ class TestVersionTracking(TransactionCase):
         # Set a recent modification on user
         self.test_user.write({'is_active': False})
         
-        # Simulate what the controller does
+        # Simulate what the controller does (updated format without redundant properties)
         config = {
             'version': 4,
             'generated_at': fields.Datetime.now().isoformat(),
-            'config_version': fields.Datetime.now().isoformat(),
-            'host_versions': {},
             'hosts': []
         }
         
-        # Add host version
-        if self.test_host.config_version:
-            config['host_versions'][self.test_host.domain] = self.test_host.config_version.isoformat()
+        # Add host with config_version in the host object
+        host_config = self.test_host.get_config_data()
+        config['hosts'].append(host_config)
         
         # Verify structure
-        self.assertIn('config_version', config, "Config should have global version")
-        self.assertIn('host_versions', config, "Config should have host versions")
-        self.assertIn(self.test_host.domain, config['host_versions'], 
-                     "Test host should be in host versions")
+        self.assertIn('hosts', config, "Config should have hosts array")
+        self.assertTrue(len(config['hosts']) > 0, "Should have at least one host")
+        self.assertIn('config_version', config['hosts'][0], "Host should have config_version")
     
     def test_host_authorized_users_change_updates_version(self):
         """Test that changing authorized users updates host version"""

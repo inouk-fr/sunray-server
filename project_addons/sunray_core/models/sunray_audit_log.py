@@ -48,6 +48,9 @@ class SunrayAuditLog(models.Model):
         # Configuration Events
         ('config.fetched', 'Config Fetched'),
         ('config.host_fetched', 'Host Config Fetched'),
+        ('config.host.protection_enabled', 'Host Protection Enabled'),
+        ('config.host.protection_disabled', 'Host Protection Disabled'),
+        ('config.host.registration_failed', 'Host Registration failed'),
         ('config.fetched_invalid', 'Config fetched is Invalid'),
         ('config.session_duration_changed', 'Session Duration Changed'),
         ('config.waf_revalidation_changed', 'WAF Revalidation Changed'),
@@ -89,6 +92,7 @@ class SunrayAuditLog(models.Model):
         # Worker Migration Events
         ('worker.registered', 'Worker Registered'),
         ('worker.re_registered', 'Worker Re-registered'),
+        ('worker.registered_inactive_host', 'Worker Registered Inactive Host'),
         ('worker.host_bound', 'Worker Host Bound'),
         ('worker.migration_requested', 'Worker Migration Requested'),
         ('worker.migration_started', 'Worker Migration Started'),

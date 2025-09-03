@@ -11,7 +11,7 @@
                 <field name="pending_worker_name" string="Pending Worker" optional="show"/>
                 <field name="migration_pending_duration" string="Migration Pending" optional="show"/>
                 <field name="backend_url" optional="show"/>
-                <field name="is_active" widget="boolean_toggle"/>
+                <field name="is_active" string="Protection" widget="boolean_toggle"/>
                 <field name="last_migration_ts" string="Last Migration" optional="show"/>
                 <field name="create_date" optional="show"/>
                 <field name="config_version" optional="show"/>
@@ -80,6 +80,14 @@
                             <field name="create_date" readonly="1"/>
                             <field name="config_version" readonly="1"/>
                         </group>
+                    </group>
+                    
+                    <!-- Protection Disabled Warning -->
+                    <group string="Protection Status" invisible="is_active">
+                        <div class="alert alert-danger" role="alert">
+                            <strong>⚠️ Protection Disabled:</strong> All traffic to this host is currently blocked with 503 Service Unavailable.
+                            <br/>To allow public access, enable protection and create Public Access Rules instead.
+                        </div>
                     </group>
                     
                     <group string="Worker Migration" invisible="not pending_worker_name">

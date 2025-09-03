@@ -315,43 +315,12 @@ class SunrayRESTController(http.Controller):
         if not api_key_obj:
             return self._error_response('Unauthorized', 401)
         
-        # Build configuration with version tracking
+        # Build configuration 
         config = {
             'version': 4,  # Incremented for Access Rules support
             'generated_at': fields.Datetime.now().isoformat(),
-            'config_version': fields.Datetime.now().isoformat(),  # Global config version
-            'host_versions': {},  # Per-host versions
-            'hosts': []
+            'hosts': request.env['sunray.host'].sudo().search([]).get_config_data()
         }
-        
-        # Add hosts with version tracking
-        host_objs = request.env['sunray.host'].sudo().search([('is_active', '=', True)])
-        for host_obj in host_objs:
-            # Track host version
-            if host_obj.config_version:
-                config['host_versions'][host_obj.domain] = host_obj.config_version.isoformat()
-            
-            host_config = {
-                'domain': host_obj.domain,
-                'backend': host_obj.backend_url,
-                'nb_authorized_users': len(host_obj.user_ids.filtered(lambda u: u.is_active)),
-                'session_duration_s': host_obj.session_duration_s,
-                'websocket_url_prefix': host_obj.websocket_url_prefix,
-                
-                # NEW: Access Rules - unified exceptions tree
-                'exceptions_tree': host_obj.get_exceptions_tree(),
-                
-                # WAF integration
-                'bypass_waf_for_authenticated': host_obj.bypass_waf_for_authenticated,
-                'waf_bypass_revalidation_s': host_obj.waf_bypass_revalidation_s,
-                
-                # Worker information (if bound)
-                'worker_id': host_obj.sunray_worker_id.id if host_obj.sunray_worker_id else None,
-                'worker_name': host_obj.sunray_worker_id.name if host_obj.sunray_worker_id else None,
-            }
-            
-            
-            config['hosts'].append(host_config)
         
         # Setup request context and log config fetch
         context_data = self._setup_request_context(request)
@@ -549,24 +518,30 @@ class SunrayRESTController(http.Controller):
             }
             return self._json_response(error_details, status=409)
         
-        # Build host-specific configuration
+        # Build host-specific configuration using centralized method
         config = {
             'version': 4,  # API version
             'generated_at': fields.Datetime.now().isoformat(),
             'worker_id': worker_obj.id,
             'worker_name': worker_obj.name,
-            'host': {
-                'domain': host_obj.domain,
-                'backend': host_obj.backend_url,
-                'nb_authorized_users': len(host_obj.user_ids.filtered(lambda u: u.is_active)),
-                'session_duration_s': host_obj.session_duration_s,
-                'websocket_url_prefix': host_obj.websocket_url_prefix,
-                'exceptions_tree': host_obj.get_exceptions_tree(),
-                'bypass_waf_for_authenticated': host_obj.bypass_waf_for_authenticated,
-                'waf_bypass_revalidation_s': host_obj.waf_bypass_revalidation_s,
-                'config_version': host_obj.config_version.isoformat() if host_obj.config_version else None
-            }
+            'host': host_obj.get_config_data()  # Includes is_active field
         }
+        
+        # Audit log registration to inactive host (if applicable)
+        if not host_obj.is_active:
+            request.env['sunray.audit.log'].sudo().create_api_event(
+                event_type='worker.registered_inactive_host',
+                api_key_id=api_key_obj.id,
+                details={
+                    'worker_id': worker_obj.id,
+                    'worker_name': worker_name,
+                    'host_id': host_obj.id,
+                    'hostname': hostname,
+                    'is_active': False
+                },
+                severity='warning',
+                ip_address=request.httprequest.environ.get('REMOTE_ADDR')
+            )
         
         # Audit log successful registration
         request.env['sunray.audit.log'].sudo().create_api_event(
@@ -614,10 +589,9 @@ class SunrayRESTController(http.Controller):
         if not worker_obj:
             return self._error_response(f'Worker "{worker_name}" not found', 404)
         
-        # Find the host
+        # Find the host (including inactive hosts)
         host_obj = request.env['sunray.host'].sudo().search([
-            ('domain', '=', hostname),
-            ('is_active', '=', True)
+            ('domain', '=', hostname)
         ], limit=1)
         
         if not host_obj:
@@ -630,23 +604,13 @@ class SunrayRESTController(http.Controller):
                 403
             )
         
-        # Build host-specific configuration (same structure as /register endpoint)
+        # Build host-specific configuration using centralized method
         config = {
             'version': 4,  # API version
             'generated_at': fields.Datetime.now().isoformat(),
             'worker_id': worker_obj.id,
             'worker_name': worker_obj.name,
-            'host': {
-                'domain': host_obj.domain,
-                'backend': host_obj.backend_url,
-                'nb_authorized_users': len(host_obj.user_ids.filtered(lambda u: u.is_active)),
-                'session_duration_s': host_obj.session_duration_s,
-                'websocket_url_prefix': host_obj.websocket_url_prefix,
-                'exceptions_tree': host_obj.get_exceptions_tree(),
-                'bypass_waf_for_authenticated': host_obj.bypass_waf_for_authenticated,
-                'waf_bypass_revalidation_s': host_obj.waf_bypass_revalidation_s,
-                'config_version': host_obj.config_version.isoformat() if host_obj.config_version else None
-            }
+            'host': host_obj.get_config_data()  # Includes is_active and all other fields
         }
         
         # Setup request context and log config fetch

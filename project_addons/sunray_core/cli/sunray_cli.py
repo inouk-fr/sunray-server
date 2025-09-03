@@ -877,7 +877,7 @@ class SunrayCommand(Command):
             if host.last_migration_ts:
                 print(f"Last Migration:             {host.last_migration_ts}")
             print(f"Backend URL:                {host.backend_url or 'Not configured'}")
-            print(f"Active:                     {'Yes' if host.is_active else 'No'}")
+            print(f"Protection Enabled:         {host.is_active}")
             print(f"Users:                      {len(host.user_ids)}")
             print(f"Session Duration:           {host.session_duration_s}s ({host.session_duration_s//3600}h {(host.session_duration_s%3600)//60}m)")
             print(f"WAF Bypass Revalidation:    {host.waf_bypass_revalidation_s}s ({host.waf_bypass_revalidation_s//60}m)")

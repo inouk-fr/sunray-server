@@ -76,6 +76,73 @@ Health status affects:
 - Audit alerting thresholds
 - Cache invalidation strategies
 
+## Host Active Status Handling
+
+### Protection States
+
+Hosts in Sunray have three distinct protection states:
+
+1. **Active** (`is_active=True`): Host is protected, access rules enforced
+2. **Inactive** (`is_active=False`): Host protection disabled, all traffic blocked with 503
+3. **Unconfigured**: Host not found in server, worker should handle appropriately
+
+### Worker Behavior for Inactive Hosts
+
+When a host has `is_active=False`, the worker MUST:
+
+1. **Block ALL traffic** with HTTP 503 Service Unavailable
+2. **No exceptions** - access rules, sessions, and tokens are ignored
+3. **Audit logging** - log blocked requests to inactive hosts
+4. **Cache inactive status** - workers may cache the inactive state
+
+**Example Response**:
+```http
+HTTP/1.1 503 Service Unavailable
+Content-Type: text/html
+
+<!DOCTYPE html>
+<html>
+<head><title>Service Temporarily Unavailable</title></head>
+<body>
+<h1>Service Temporarily Unavailable</h1>
+<p>This service is currently undergoing maintenance.</p>
+</body>
+</html>
+```
+
+### Configuration API Changes
+
+All configuration endpoints now include the `is_active` flag in host configurations:
+
+```json
+{
+  "domain": "app.example.com",
+  "is_active": false,
+  "backend": "https://backend.example.com",
+  "exceptions_tree": { ... },
+  "websocket_urls": [ ... ]
+}
+```
+
+This allows workers to distinguish between:
+- **Inactive hosts**: Known to server but protection disabled
+- **Unknown hosts**: Not configured in server at all
+
+### Audit Events
+
+The server logs these audit events for protection state changes:
+
+- `config.host.protection_enabled`: Host reactivated (`is_active: False → True`)
+- `config.host.protection_disabled`: Host deactivated (`is_active: True → False`)
+- `worker.registered_inactive_host`: Worker registered to inactive host (warning)
+
+### Backward Compatibility
+
+This change is backward compatible:
+- Existing hosts default to `is_active=True`
+- Workers without inactive host support will continue to work normally
+- Configuration API remains compatible with older worker versions
+
 ## Worker Migration System
 
 ### Migration Overview
@@ -173,10 +240,6 @@ The `/config/register` endpoint handles all migration logic:
 {
   "version": 4,
   "generated_at": "2024-01-01T12:00:00Z",
-  "config_version": "2024-01-01T12:00:00Z",
-  "host_versions": {
-    "example.com": "2024-01-01T11:55:00Z"
-  },
   "hosts": [
     {
       "domain": "example.com",
@@ -217,7 +280,8 @@ The `/config/register` endpoint handles all migration logic:
       "bypass_waf_for_authenticated": true,
       "waf_bypass_revalidation_s": 900,
       "worker_id": 42,
-      "worker_name": "demo-worker-001"
+      "worker_name": "demo-worker-001",
+      "config_version": "2024-01-01T11:55:00Z"
     }
   ]
 }
@@ -226,8 +290,6 @@ The `/config/register` endpoint handles all migration logic:
 **Field Descriptions**:
 - `version`: API version (currently 4 with Access Rules support)
 - `generated_at`: Timestamp when config was generated
-- `config_version`: Global configuration version timestamp
-- `host_versions`: Map of domain to last modification timestamp
 - `hosts`: Array of host configurations
 
 **Host Configuration Fields**:
@@ -243,8 +305,8 @@ The `/config/register` endpoint handles all migration logic:
 - `worker_name`: Name of the worker protecting this host (null if not yet bound)
 
 **Version Tracking**:
-- `host_versions` allows workers to detect configuration changes
-- Workers can use these for cache invalidation strategies
+- Each host includes its own `config_version` for cache invalidation
+- Workers can use these timestamps for cache invalidation strategies
 
 ### GET /sunray-srvr/v1/config/{hostname}
 

@@ -116,14 +116,16 @@ class TestCacheInvalidation(TransactionCase):
             response = controller.get_config()
             data = json.loads(response.data)
             
-            # Check response structure
-            self.assertIn('config_version', data)
-            self.assertIn('host_versions', data)
+            # Check response structure - host config_version should be in individual host objects
+            self.assertIn('hosts', data)
+            self.assertTrue(len(data['hosts']) > 0)
             
-            # Check host version is included
-            self.assertIn(self.host.domain, data['host_versions'])
-            host_version = datetime.fromisoformat(data['host_versions'][self.host.domain])
-            self.assertEqual(host_version, self.host.config_version)
+            # Check host has config_version in its own object
+            host_config = next(h for h in data['hosts'] if h['domain'] == self.host.domain)
+            self.assertIn('config_version', host_config)
+            if host_config['config_version']:
+                host_version = datetime.fromisoformat(host_config['config_version'])
+                self.assertEqual(host_version, self.host.config_version)
     
     @patch('requests.post')
     def test_force_cache_refresh_host(self, mock_post):
@@ -362,17 +364,13 @@ class TestCacheInvalidation(TransactionCase):
             response = controller.get_config()
             data = json.loads(response.data)
             
-            # Version should be ISO format string that can be parsed
-            config_version = data['config_version']
-            parsed_version = datetime.fromisoformat(config_version)
-            self.assertIsInstance(parsed_version, datetime)
+            # Check that hosts are returned and have config_version in each host object
+            self.assertIn('hosts', data)
+            self.assertIsInstance(data['hosts'], list)
             
-            # Host versions should be parseable
-            for domain, version_str in data['host_versions'].items():
-                parsed = datetime.fromisoformat(version_str)
-                self.assertIsInstance(parsed, datetime)
-            
-            # Host versions should be parseable
-            for domain, version_str in data['host_versions'].items():
-                parsed = datetime.fromisoformat(version_str)
-                self.assertIsInstance(parsed, datetime)
+            # Each host should have its own config_version
+            for host_config in data['hosts']:
+                self.assertIn('config_version', host_config)
+                if host_config['config_version']:
+                    parsed = datetime.fromisoformat(host_config['config_version'])
+                    self.assertIsInstance(parsed, datetime)
