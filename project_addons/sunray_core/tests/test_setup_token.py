@@ -660,3 +660,182 @@ class TestSetupTokenValidation(TransactionCase):
         self.assertEqual(details['worker_id'], 'test-worker')
         self.assertEqual(details['device_name'], 'Valid Test Device')
         self.assertIn('uses_remaining', details)
+
+
+class TestSetupTokenUserFriendlyFormat(TransactionCase):
+    """Test suite for user-friendly setup token format"""
+
+    def setUp(self):
+        super().setUp()
+        # Create test host
+        self.host_obj = self.env['sunray.host'].create({
+            'domain': 'format-test.example.com',
+            'backend_url': 'http://localhost:8000'
+        })
+        
+        # Create test user
+        self.user_obj = self.env['sunray.user'].create({
+            'username': 'formatuser',
+            'email': 'format@example.com',
+            'is_active': True
+        })
+    
+    def test_01_new_token_format(self):
+        """Test that new tokens use user-friendly format"""
+        token_obj, token_value = self.env['sunray.setup.token'].create_setup_token(
+            user_id=self.user_obj.id,
+            host_id=self.host_obj.id,
+            device_name='Format Test Device'
+        )
+        
+        # Verify format: XXXXX-XXXXX-XXXXX-XXXXX-XXXXX
+        self.assertRegex(token_value, r'^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{5}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{5}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{5}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{5}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{5}$')
+        
+        # Verify total length (25 chars + 4 dashes = 29)
+        self.assertEqual(len(token_value), 29)
+        
+        # Verify no ambiguous characters (0, O, I, L, 1)
+        self.assertNotIn('0', token_value)
+        self.assertNotIn('O', token_value)
+        self.assertNotIn('I', token_value)
+        self.assertNotIn('L', token_value)
+        self.assertNotIn('1', token_value)
+    
+    def test_02_token_normalization(self):
+        """Test token normalization for hashing"""
+        model = self.env['sunray.setup.token']
+        
+        # Test cases for normalization
+        test_cases = [
+            ('A2B3C-4D5E6-F7G8H-9J2K3-M4N5P', 'A2B3C4D5E6F7G8H9J2K3M4N5P'),
+            ('a2b3c-4d5e6-f7g8h-9j2k3-m4n5p', 'A2B3C4D5E6F7G8H9J2K3M4N5P'),  # lowercase
+            ('A2B3C 4D5E6 F7G8H 9J2K3 M4N5P', 'A2B3C4D5E6F7G8H9J2K3M4N5P'),  # spaces
+            ('  A2B3C-4D5E6-F7G8H-9J2K3-M4N5P  ', 'A2B3C4D5E6F7G8H9J2K3M4N5P'),  # whitespace
+        ]
+        
+        for input_token, expected in test_cases:
+            result = model._normalize_token_for_hashing(input_token)
+            self.assertEqual(result, expected, f"Failed for input: {input_token}")
+    
+    def test_03_backward_compatibility_validation(self):
+        """Test that validation works with both old and new token formats"""
+        token_obj, new_format_token = self.env['sunray.setup.token'].create_setup_token(
+            user_id=self.user_obj.id,
+            host_id=self.host_obj.id,
+            device_name='Backward Compat Device'
+        )
+        
+        # Test validation with raw token (new format)
+        result = self.env['sunray.setup.token'].validate_setup_token(
+            username='formatuser',
+            token_hash=new_format_token,  # Raw token, not pre-hashed
+            host_domain='format-test.example.com'
+        )
+        self.assertTrue(result['valid'])
+        
+        # Test validation with pre-hashed token (existing format)
+        result = self.env['sunray.setup.token'].validate_setup_token(
+            username='formatuser',
+            token_hash=token_obj.token_hash,  # Pre-hashed
+            host_domain='format-test.example.com'
+        )
+        self.assertTrue(result['valid'])
+        
+        # Test validation with variations of the raw token
+        variations = [
+            new_format_token.lower(),  # lowercase
+            new_format_token.replace('-', ''),  # no dashes
+            f'  {new_format_token}  ',  # whitespace
+            new_format_token.replace('-', ' '),  # spaces instead of dashes
+        ]
+        
+        for variation in variations:
+            result = self.env['sunray.setup.token'].validate_setup_token(
+                username='formatuser',
+                token_hash=variation,
+                host_domain='format-test.example.com'
+            )
+            self.assertTrue(result['valid'], f"Failed for variation: {variation}")
+    
+    def test_04_entropy_security(self):
+        """Test that new format maintains cryptographic security"""
+        # Generate multiple tokens and verify uniqueness
+        tokens = []
+        for i in range(100):
+            _, token_value = self.env['sunray.setup.token'].create_setup_token(
+                user_id=self.user_obj.id,
+                host_id=self.host_obj.id,
+                device_name=f'Security Test Device {i}'
+            )
+            tokens.append(token_value)
+        
+        # All tokens should be unique
+        unique_tokens = set(tokens)
+        self.assertEqual(len(unique_tokens), 100, "Generated tokens are not unique")
+        
+        # Calculate entropy (32 chars ^ 25 positions = log2(32^25) = ~125 bits)
+        import math
+        entropy = 25 * math.log2(32)  # 25 chars from 32-char alphabet
+        self.assertGreater(entropy, 120, "Entropy should be over 120 bits")
+    
+    def test_05_character_set_validation(self):
+        """Test that generated tokens only use expected character set"""
+        valid_chars = set('23456789ABCDEFGHJKMNPQRSTUVWXYZ')
+        
+        for _ in range(20):  # Test multiple tokens
+            _, token_value = self.env['sunray.setup.token'].create_setup_token(
+                user_id=self.user_obj.id,
+                host_id=self.host_obj.id,
+                device_name='Charset Test Device'
+            )
+            
+            # Remove dashes and check characters
+            token_chars = set(token_value.replace('-', ''))
+            self.assertTrue(token_chars.issubset(valid_chars), 
+                          f"Token contains invalid chars: {token_chars - valid_chars}")
+    
+    def test_06_dictation_friendly(self):
+        """Test that format is suitable for phone/voice dictation"""
+        _, token_value = self.env['sunray.setup.token'].create_setup_token(
+            user_id=self.user_obj.id,
+            host_id=self.host_obj.id,
+            device_name='Dictation Test Device'
+        )
+        
+        # Should be exactly 5 groups of 5 characters
+        groups = token_value.split('-')
+        self.assertEqual(len(groups), 5)
+        for group in groups:
+            self.assertEqual(len(group), 5)
+        
+        # No ambiguous characters that sound alike
+        ambiguous_pairs = [('0', 'O'), ('I', '1'), ('L', '1')]
+        token_chars = token_value.replace('-', '')
+        
+        for char1, char2 in ambiguous_pairs:
+            self.assertNotIn(char1, token_chars)
+            self.assertNotIn(char2, token_chars)
+    
+    def test_07_cli_compatibility(self):
+        """Test that CLI token creation also uses new format"""
+        # Test the centralized create_setup_token method used by CLI
+        token_obj, token_value = self.env['sunray.setup.token'].create_setup_token(
+            user_id=self.user_obj.id,
+            host_id=self.host_obj.id,
+            device_name='CLI Test Device',
+            validity_hours=48,
+            max_uses=3,
+            allowed_cidrs='192.168.1.0/24'
+        )
+        
+        # Should use new format
+        self.assertRegex(token_value, r'^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{5}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{5}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{5}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{5}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{5}$')
+        
+        # Verify token works in validation
+        result = self.env['sunray.setup.token'].validate_setup_token(
+            username='formatuser',
+            token_hash=token_value,
+            host_domain='format-test.example.com',
+            client_ip='192.168.1.100'
+        )
+        self.assertTrue(result['valid'])

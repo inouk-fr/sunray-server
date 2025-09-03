@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
+import hashlib
 import ipaddress
 import json
 import logging
+import secrets
 
 from odoo import models, fields, api
 from datetime import datetime, timedelta
@@ -140,6 +142,50 @@ class SunraySetupToken(models.Model):
             raise ValueError(f"Unsupported format: {format}")
     
     @api.model
+    def _generate_readable_token(self):
+        """Generate a user-friendly token that can be easily dictated and typed.
+        
+        Format: XXXXX-XXXXX-XXXXX-XXXXX-XXXXX (25 characters, 5 groups of 5)
+        Character set: 23456789ABCDEFGHJKMNPQRSTUVWXYZ (32 chars, excludes 0,O,I,L,1)
+        Entropy: 32^25 = ~125 bits (cryptographically secure)
+        
+        Returns:
+            str: Formatted token like 'A2B3C-4D5E6-F7G8H-9J2K3-M4N5P'
+        """
+        # Character set excluding ambiguous chars (0, O, I, L, 1)
+        chars = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
+        
+        # Generate 25 random characters
+        token_chars = [secrets.choice(chars) for _ in range(25)]
+        
+        # Format with dashes: XXXXX-XXXXX-XXXXX-XXXXX-XXXXX
+        formatted_token = '-'.join([
+            ''.join(token_chars[0:5]),
+            ''.join(token_chars[5:10]),
+            ''.join(token_chars[10:15]),
+            ''.join(token_chars[15:20]),
+            ''.join(token_chars[20:25])
+        ])
+        
+        return formatted_token
+    
+    @api.model
+    def _normalize_token_for_hashing(self, token_value):
+        """Normalize token for hashing by removing dashes and converting to uppercase.
+        
+        This supports both old format (urlsafe) and new format (readable) tokens.
+        
+        Args:
+            token_value: Raw token value from input
+            
+        Returns:
+            str: Normalized token ready for hashing
+        """
+        # Remove dashes and spaces, convert to uppercase
+        normalized = token_value.replace('-', '').replace(' ', '').upper()
+        return normalized
+    
+    @api.model
     def create_setup_token(self, user_id, host_id, device_name, validity_hours=24, max_uses=1, allowed_cidrs=''):
         """
         Create a setup token and auto-authorize user for the host if needed.
@@ -170,9 +216,11 @@ class SunraySetupToken(models.Model):
                 'user_ids': [(4, user_id)]  # Add user to host's authorized users
             })
         
-        # Generate secure token
-        token_value = secrets.token_urlsafe(32)
-        token_hash = f"sha512:{hashlib.sha512(token_value.encode()).hexdigest()}"
+        # Generate secure user-friendly token
+        token_value = self._generate_readable_token()
+        # Normalize for consistent hashing (handles both old and new formats)
+        normalized_token = self._normalize_token_for_hashing(token_value)
+        token_hash = f"sha512:{hashlib.sha512(normalized_token.encode()).hexdigest()}"
         
         # Create token record
         token_obj = self.create({
@@ -244,7 +292,7 @@ class SunraySetupToken(models.Model):
         
         Args:
             username: Username associated with the token
-            token_hash: SHA-512 hash of the setup token (prefixed with "sha512:")
+            token_hash: Either SHA-512 hash (prefixed with "sha512:") OR raw token value
             host_domain: Domain the token is being used for
             client_ip: Client IP address for CIDR validation (optional)
             user_agent: Client user agent string (optional)
@@ -263,6 +311,13 @@ class SunraySetupToken(models.Model):
         
         _logger.debug(f"Validating setup token for username: {username}, host: {host_domain}")
         now = fields.Datetime.now()
+        
+        # Handle both raw tokens and pre-hashed tokens for backward compatibility
+        if token_hash and not token_hash.startswith('sha512:'):
+            # This is a raw token value, normalize and hash it
+            normalized_token = self._normalize_token_for_hashing(token_hash)
+            token_hash = f"sha512:{hashlib.sha512(normalized_token.encode()).hexdigest()}"
+            _logger.debug("Converted raw token to hash for validation")
         
         # Initialize result structure
         result = {

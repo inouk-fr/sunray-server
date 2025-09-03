@@ -62,34 +62,35 @@ class SetupTokenWizard(models.TransientModel):
             allowed_cidrs=self.allowed_cidrs or ''
         )
         
-        # Prepare display instructions
+        # Prepare display instructions with improved formatting
         instructions = f"""
-Setup Token Generated Successfully!
+✅ Setup Token Generated Successfully!
 
-Token: {token_value}
-Username: {self.user_id.username}
-Host: {self.host_id.domain}
-Device: {self.device_name}
-Expires: {token_obj.expires_at}
-Max Uses: {self.max_uses}
+🔑 TOKEN: {token_value}
+👤 Username: {self.user_id.username}
+🌐 Host: {self.host_id.domain}
+📱 Device: {self.device_name}
+⏰ Expires: {token_obj.expires_at}
+🔢 Max Uses: {self.max_uses}
 
-Instructions:
-1. Save this token securely - it will only be shown once
-2. Visit {self.host_id.domain}
-3. You'll be redirected to the setup page
+📋 INSTRUCTIONS:
+1. COPY the token above (it's shown only once!)
+2. Visit your protected application at {self.host_id.domain}
+3. You'll be redirected to the Sunray setup page
 4. Enter this token along with your username
 5. Follow the passkey registration process
 
-Security Notes:
-- This token expires in {self.validity_hours} hours
-- It can be used {self.max_uses} time(s)
-- This token is only valid for {self.host_id.domain}
+🔒 SECURITY NOTES:
+• Token expires in {self.validity_hours} hours
+• Can be used {self.max_uses} time(s)
+• Only valid for {self.host_id.domain}
+• Format: Groups of 5 characters separated by dashes for easy dictation
 """
         
         if self.allowed_cidrs:
             cidr_list = [cidr.strip() for cidr in self.allowed_cidrs.splitlines() if cidr.strip()]
             if cidr_list:
-                instructions += f"- Restricted to IPs/CIDRs: {', '.join(cidr_list)}\n"
+                instructions += f"• IP restriction: {', '.join(cidr_list)}\n"
         
         # Update wizard for display
         self.generated_token = token_value

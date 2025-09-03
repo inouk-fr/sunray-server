@@ -16,9 +16,21 @@
                     <field name="allowed_cidrs" widget="text" placeholder="Optional: IP addresses or CIDR ranges per line&#10;Examples:&#10;192.168.1.100&#10;192.168.1.100/32&#10;10.0.0.0/8"/>
                 </group>
                 
-                <!-- Show instructions when token is generated -->
-                <div invisible="not generated_token" class="alert alert-success" role="alert">
-                    <field name="token_display" readonly="1" widget="text" nolabel="1"/>
+                <!-- Show token and instructions when generated -->
+                <div invisible="not generated_token">
+                    <!-- Token display with monospace font for readability -->
+                    <div class="alert alert-info" role="alert">
+                        <h5><i class="fa fa-key"/> Setup Token</h5>
+                        <div style="font-family: 'Courier New', monospace; font-size: 18px; font-weight: bold; letter-spacing: 1px; background: #f8f9fa; padding: 10px; border: 1px dashed #6c757d; border-radius: 4px; text-align: center; margin: 10px 0;">
+                            <field name="generated_token" readonly="1" nolabel="1"/>
+                        </div>
+                        <small class="text-muted"><i class="fa fa-info-circle"/> Click to select, then copy (Ctrl+C)</small>
+                    </div>
+                    
+                    <!-- Instructions -->
+                    <div class="alert alert-success" role="alert">
+                        <field name="token_display" readonly="1" widget="text" nolabel="1"/>
+                    </div>
                 </div>
                 
                 <!-- Hidden field to track state -->
