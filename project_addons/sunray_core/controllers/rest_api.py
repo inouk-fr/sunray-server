@@ -558,7 +558,7 @@ class SunrayRESTController(http.Controller):
         
         return self._json_response(config)
     
-    @http.route('/sunray-srvr/v1/config/<string:hostname>', type='http', auth='none', methods=['GET'], cors='*', csrf=False)
+    @http.route('/sunray-srvr/v1/config/<string:hostname>', type='http', auth='none', methods=['GET', 'HEAD'], cors='*', csrf=False)
     def get_host_config(self, hostname, **kwargs):
         """Get configuration for a specific host (worker-optimized endpoint)
         
@@ -566,11 +566,16 @@ class SunrayRESTController(http.Controller):
         Unlike the global /config endpoint, this returns only data relevant
         to the specified hostname, improving security and efficiency.
         
+        Supports both GET and HEAD requests:
+        - GET: Returns full configuration data
+        - HEAD: Returns only X-Config-Version header for cache validation
+        
         Args:
             hostname: The hostname to get configuration for
             
         Returns:
-            Host-specific configuration data with authorized users only
+            Host-specific configuration data with authorized users only (GET)
+            Empty response with X-Config-Version header (HEAD)
         """
         api_key_obj = self._authenticate_api(request)
         if not api_key_obj:
@@ -604,6 +609,16 @@ class SunrayRESTController(http.Controller):
                 403
             )
         
+        # Handle HEAD request - return only X-Config-Version header
+        if request.httprequest.method == 'HEAD':
+            config_version = host_obj.config_version.isoformat() if host_obj.config_version else fields.Datetime.now().isoformat()            
+            return Response(
+                '',
+                status=200,
+                headers={'X-Config-Version': config_version}
+            )
+        
+        # Handle GET request - return full configuration
         # Build host-specific configuration using centralized method
         config = {
             'version': 4,  # API version
