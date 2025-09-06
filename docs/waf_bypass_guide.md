@@ -76,29 +76,24 @@ Sunray monitors and logs all manipulation attempts:
 ### Server-Side Setup
 
 1. **Enable WAF Bypass for Host**
-   ```bash
-   # Via CLI
-   bin/sunray-srvr srctl host get example.com
-   # Enable bypass_waf_for_authenticated field in Admin UI
-   ```
 
-2. **Configure Revalidation Period**
-   ```bash
-   # Set custom revalidation period (in seconds)
-   # Default: 900 seconds (15 minutes)
-   # Range: 60-3600 seconds
-   ```
+Login to Sunray Server, open Protected Host / Confguration tab then:
 
-3. **Set Environment Variables**
-   ```bash
-   # Option 1: Dedicated WAF bypass secret
-   export WAF_BYPASS_SECRET="your-strong-random-secret"
-   
-   # Option 2: Uses existing SESSION_SECRET if WAF_BYPASS_SECRET not set
-   export SESSION_SECRET="your-session-secret"
-   ```
+  - Enable bypass_waf_for_authenticated field
+  - Set custom revalidation period (in seconds)
+    - Default: 900 seconds (15 minutes)
+    - Range: 60-3600 seconds
 
-### Cloudflare Configuration
+
+### Worker Setup
+
+By default, `sunray_sublimation` cookies are signed using `SESSION_SECRET`.
+You can optionally use a distinct secret for WAF bypass by setting 
+`WAF_BYPASS_SECRET` in the `[vars]` section of your `wrangler.toml` file.
+
+Refer to the Cloudflare Worker documentation for detailed configuration instructions.
+
+### Cloudflare WAF Configuration
 
 1. **Create WAF Firewall Rule**
    - **Rule Name**: `Sunray Authenticated Bypass`
