@@ -68,6 +68,7 @@ Think of Sunray as a security bouncer at a club entrance:
 - The environment variable `$MPY_REPO_GIT_TOKEN` contains a valid GitLab token
 - **NEVER** write the actual token value in any documentation or logs
 - The token can be used in tool commands for authenticated Git operations
+- **For production deployments, see [Sunray Deployment Security Guide](docs/sunray_deployment_security.md)**
 
 ### URL Structure
 - **Sunray Server (Admin)**: The Odoo 18 server with sunray_core addon

@@ -253,6 +253,9 @@ docker run -e IKB_ODOO_ADMIN_PASSWORD="admin" -it sunray-srvr18:latest
 - [API_CONTRACT.md](./docs/API_CONTRACT.md) - API specification for workers
 - [Sunray Introduction](./docs/sunray_introduction.md) - System overview and concepts
 
+### Deployment & Security
+- [Sunray Deployment Security](./docs/sunray_deployment_security.md) - Production security hardening guide
+
 ### Feature Guides
 - [Worker Management and Migration](./docs/worker_management_and_migration.md) - Complete worker lifecycle guide
 - [WAF Bypass Guide](./docs/waf_bypass_guide.md) - Enhanced security for authenticated users
