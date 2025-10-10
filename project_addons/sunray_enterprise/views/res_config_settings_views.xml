@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Sunray Configuration Form -->
+    <record id="res_config_settings_view_form" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.sunray</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app string="Sunray" name="sunray_core" groups="sunray_core.group_sunray_admin">
+                    <block title="Email Notifications">
+                        <setting help="Configure the default email template for sending setup tokens to users">
+                            <field name="sunray_setup_token_mail_template_id" class="oe_inline"/>
+                            <div class="content-group">
+                                <div class="text-muted">
+                                    This template will be used by default when generating setup tokens with email notification enabled.
+                                    You can override this on a per-token basis in the wizard.
+                                </div>
+                            </div>
+                        </setting>
+                    </block>
+                    <block title="IP Whitelist">
+                        <setting help="Restrict access to the Sunray admin interface by IP address">
+                            <field name="sunray_admin_ip_whitelist"
+                                   class="oe_inline"
+                                   placeholder="192.168.1.100, 192.168.1.0/24, 10.0.0.0/8"/>
+                            <div class="content-group">
+                                <div class="text-muted mt-2">
+                                    Configure which IP addresses or CIDR ranges are allowed to access the Sunray server admin interface.
+                                    Separate multiple IPs/CIDRs with commas. When configured, only requests from whitelisted IPs will be able to reach the Odoo interface.
+                                </div>
+                            </div>
+                        </setting>
+                    </block>
+                </app>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Sunray Settings Action -->
+    <record id="action_sunray_config" model="ir.actions.act_window">
+        <field name="name">Settings</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">res.config.settings</field>
+        <field name="view_mode">form</field>
+        <field name="target">inline</field>
+        <field name="context">{'module': 'sunray_core'}</field>
+    </record>
+</odoo>

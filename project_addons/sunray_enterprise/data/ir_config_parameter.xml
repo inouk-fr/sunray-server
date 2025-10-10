@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<odoo>
+    <data noupdate="0">
+        <!-- Default mail template for setup tokens -->
+        <record id="config_setup_token_mail_template" model="ir.config_parameter">
+            <field name="key">sunray.setup_token_mail_template</field>
+            <field name="value">sunray_enterprise.mail_template_setup_token_v2</field>
+        </record>
+    </data>
+</odoo>

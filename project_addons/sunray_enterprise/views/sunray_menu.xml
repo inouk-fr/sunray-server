@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Add Settings menu in Configuration section -->
+    <menuitem id="menu_sunray_settings"
+              name="Settings"
+              parent="sunray_core.menu_sunray_config"
+              action="action_sunray_config"
+              sequence="100"/>
+</odoo>
