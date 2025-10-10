@@ -52,8 +52,12 @@ dash_cr.execute("""
 
 query_datas = dash_cr.dictfetchall()
 for query in query_datas:
+    if query['is_active']:
+        span_badge = """&lt;span class="badge-pill badge-success"&gt;Active&lt;/span&gt;"""
+    else:
+        span_badge = """&lt;span class="badge-pill badge-danger"&gt;Inactive&lt;/span&gt;"""
     row_result_list.append((
-        query['is_active'],
+        span_badge,
         query['domain'],
         query['backend_url']
     ))
@@ -62,7 +66,7 @@ result_list = []
 if row_result_list:
     result_list = [
         {
-         'headers': ['Status', 'Domain', 'URL'],
+         'headers': ['Protection', 'Domain', 'URL'],
          'rows': row_result_list
         }
    ]
@@ -131,8 +135,12 @@ dash_cr.execute("""
 
 query_datas = dash_cr.dictfetchall()
 for query in query_datas:
+    if query['is_active']:
+        span_badge = """&lt;span class="badge-pill badge-success"&gt;Active&lt;/span&gt;"""
+    else:
+        span_badge = """&lt;span class="badge-pill badge-danger"&gt;Inactive&lt;/span&gt;"""
     row_result_list.append((
-        query['is_active'],
+        span_badge,
         query['username'],
     ))
 
