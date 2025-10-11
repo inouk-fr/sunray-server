@@ -104,7 +104,7 @@
 
                     <group string="Access Tokens" invisible="access_type != 'token'">
                         <field name="token_ids" nolabel="1"
-                               context="{'default_host_id': host_id, 'list_view_ref':'sunray_core.sunray_webhook_token_listview_embedded'}" >
+                               context="{'list_view_ref':'sunray_core.sunray_webhook_token_listview_embedded'}" >
                             <list>
                                 <field name="name"/>
                                 <field name="token_source"/>
@@ -114,6 +114,12 @@
                                 <field name="expires_at" optional="show"/>
                             </list>
                         </field>
+                        <div class="alert alert-success" role="status" colspan="2">
+                            <p class="mb-0">
+                                <strong>Tip:</strong> Tokens are now reusable! The same token can be used in multiple Access Rules across different hosts.
+                                Select existing tokens or create new ones from the <strong>Sunray → Webhook Tokens</strong> menu.
+                            </p>
+                        </div>
                     </group>
                 </sheet>
             </form>

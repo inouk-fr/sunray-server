@@ -6,7 +6,6 @@
         <field name="model">sunray.webhook.token</field>
         <field name="arch" type="xml">
             <list default_order="name, id">
-                <field name="host_id" optional="show"/>
                 <field name="name"/>
                 <field name="token_source" widget="badge"
                        decoration-info="token_source == 'header'"
@@ -51,7 +50,6 @@
         <field name="arch" type="xml">
             <search>
                 <field name="name"/>
-                <field name="host_id"/>
                 <field name="header_name"/>
                 <field name="param_name"/>
                 <separator/>
@@ -68,7 +66,6 @@
                 <filter name="used_recently" string="Used Recently (7 days)"
                         domain="[('last_used', '&gt;=', (datetime.datetime.now() - datetime.timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S'))]"/>
                 <group expand="0" string="Group By">
-                    <filter string="Host" name="group_by_host" context="{'group_by': 'host_id'}"/>
                     <filter string="Token Source" name="group_by_token_source" context="{'group_by': 'token_source'}"/>
                     <filter string="Status" name="group_by_status" context="{'group_by': 'is_active'}"/>
                     <filter string="Has Expiration" name="group_by_expiration"
@@ -116,7 +113,6 @@
 
                     <group>
                         <group name="basic_info_left">
-                            <field name="host_id" options="{'no_create': True}" required="1"/>
                             <field name="is_active" widget="boolean_toggle"/>
                             <field name="expires_at" placeholder="Leave empty for no expiration"/>
                         </group>
@@ -126,6 +122,10 @@
                             <field name="create_date" readonly="1" string="Created"/>
                         </group>
                     </group>
+                    <div class="alert alert-info" role="status">
+                        <p><strong>Token Reusability:</strong> This token can be used across multiple hosts by attaching it to Access Rules.
+                        Navigate to each host's Access Rules to configure which URL patterns can use this token.</p>
+                    </div>
 
                     <group string="Token Configuration">
                         <group colspan="2">
@@ -245,6 +245,7 @@
             <p>
                 Webhook tokens provide authentication for APIs and webhooks that cannot use passkeys.
                 They are perfect for third-party integrations, CI/CD pipelines, and automated systems.
+                <strong>Tokens are reusable across multiple hosts via Access Rules.</strong>
             </p>
             <p>
                 <strong>Common Use Cases:</strong><br/>
@@ -256,6 +257,7 @@
             <p>
                 <strong>Security Features:</strong><br/>
                 • Auto-generated secure tokens (32 characters)<br/>
+                • Reusable across multiple hosts and URL patterns<br/>
                 • Optional IP/CIDR restrictions<br/>
                 • Expiration dates for temporary access<br/>
                 • Usage tracking and audit logging

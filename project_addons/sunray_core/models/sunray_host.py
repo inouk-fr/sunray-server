@@ -57,15 +57,8 @@ class SunrayHost(models.Model):
              'All URLs starting with this prefix will be upgraded to WebSocket protocol after authentication. '
              'For unauthenticated WebSocket access, create a Public access rule instead.'
     )
-    
-    # Webhook Authentication
-    webhook_token_ids = fields.One2many(
-        'sunray.webhook.token', 
-        'host_id', 
-        string='Webhook Tokens'
-    )
-    
-    # Access control  
+
+    # Access control
     user_ids = fields.Many2many(
         'sunray.user',
         'sunray_user_host_rel',

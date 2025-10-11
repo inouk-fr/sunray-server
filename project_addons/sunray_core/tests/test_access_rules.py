@@ -33,17 +33,15 @@ class TestAccessRules(TransactionCase):
             'is_active': True
         })
         
-        # Create test tokens
+        # Create test tokens (no longer tied to specific host)
         self.token1 = self.env['sunray.webhook.token'].create({
-            'host_id': self.host.id,
             'name': 'Shopify Webhook',
             'token': 'shopify_test_123',
             'header_name': 'X-Shopify-Hmac-Sha256',
             'token_source': 'header'
         })
-        
+
         self.token2 = self.env['sunray.webhook.token'].create({
-            'host_id': self.host.id,
             'name': 'API Key',
             'token': 'api_key_456',
             'param_name': 'api_key',
@@ -369,7 +367,6 @@ class TestAccessRules(TransactionCase):
         
         # Create inactive token
         inactive_token = self.env['sunray.webhook.token'].create({
-            'host_id': self.host.id,
             'name': 'Inactive Token',
             'token': 'inactive_123',
             'header_name': 'X-Inactive',
@@ -382,7 +379,6 @@ class TestAccessRules(TransactionCase):
         from datetime import datetime, timedelta
         
         expired_token = self.env['sunray.webhook.token'].create({
-            'host_id': self.host.id,
             'name': 'Expired Token',
             'token': 'expired_123',
             'header_name': 'X-Expired',
@@ -512,5 +508,79 @@ class TestAccessRules(TransactionCase):
         # Log the performance improvement
         improvement = regex_time / prefix_time if prefix_time > 0 else float('inf')
         print(f"Performance improvement: {improvement:.1f}x faster ({regex_time*1000:.3f}ms vs {prefix_time*1000:.3f}ms for 1000 operations)")
+
+    def test_token_reuse_across_multiple_hosts(self):
+        """Test that tokens can be reused across multiple hosts via access rules"""
+
+        # Create a second host
+        host2 = self.env['sunray.host'].create({
+            'domain': 'api2.example.com',
+            'sunray_worker_id': self.worker.id,
+            'backend_url': 'https://backend2.example.com',
+            'is_active': True
+        })
+
+        # Create a single global token
+        global_token = self.env['sunray.webhook.token'].create({
+            'name': 'Global Shopify Webhook',
+            'token': 'global_shopify_token_xyz',
+            'header_name': 'X-Shopify-Hmac-Sha256',
+            'token_source': 'header'
+        })
+
+        # Create access rules on both hosts using the same token
+        rule1 = self.env['sunray.access.rule'].create({
+            'host_id': self.host.id,
+            'description': 'Shopify webhooks on host 1',
+            'priority': 100,
+            'access_type': 'token',
+            'url_patterns': '^/api/shopify/webhook',
+            'token_ids': [(6, 0, [global_token.id])]
+        })
+
+        rule2 = self.env['sunray.access.rule'].create({
+            'host_id': host2.id,
+            'description': 'Shopify webhooks on host 2',
+            'priority': 100,
+            'access_type': 'token',
+            'url_patterns': '^/webhooks/shopify/.*',
+            'token_ids': [(6, 0, [global_token.id])]
+        })
+
+        # Verify token is referenced in both rules
+        self.assertIn(global_token, rule1.token_ids)
+        self.assertIn(global_token, rule2.token_ids)
+
+        # Get worker configs for both hosts
+        config1 = rule1.get_worker_config()
+        config2 = rule2.get_worker_config()
+
+        # Both should have the same token but different URL patterns
+        self.assertEqual(config1['tokens'][0]['token'], 'global_shopify_token_xyz')
+        self.assertEqual(config2['tokens'][0]['token'], 'global_shopify_token_xyz')
+        self.assertEqual(config1['url_patterns'], ['^/api/shopify/webhook'])
+        self.assertEqual(config2['url_patterns'], ['^/webhooks/shopify/.*'])
+
+        # Verify exceptions tree for both hosts includes the token
+        exceptions_tree1 = self.host.get_exceptions_tree()
+        exceptions_tree2 = host2.get_exceptions_tree()
+
+        self.assertEqual(len(exceptions_tree1), 1)
+        self.assertEqual(len(exceptions_tree2), 1)
+        self.assertEqual(exceptions_tree1[0]['tokens'][0]['name'], 'Global Shopify Webhook')
+        self.assertEqual(exceptions_tree2[0]['tokens'][0]['name'], 'Global Shopify Webhook')
+
+        # Update the token - verify change propagates to both hosts
+        global_token.write({'is_active': False})
+
+        # Refresh configs
+        config1 = rule1.get_worker_config()
+        config2 = rule2.get_worker_config()
+
+        # Both should now have empty token lists (token filtered out because inactive)
+        self.assertEqual(len(config1['tokens']), 0)
+        self.assertEqual(len(config2['tokens']), 0)
+
+        print(f"✓ Token reuse verified: Same token used on {self.host.domain} and {host2.domain}")
 
 
