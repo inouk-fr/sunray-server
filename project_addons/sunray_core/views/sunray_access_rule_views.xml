@@ -76,9 +76,9 @@
                         <group name="basic_info_right">
                             <field name="priority" help="Lower number = higher priority. Rules are evaluated in priority order."/>
                     <div class="alert alert-info" role="status" colspan="2">
-                        <h3>Access Rule Priority</h3>
-                        <p>Rules are evaluated in priority order (lower number = higher priority).<br/>
-                        The first matching rule determines access type. If no rule matches, passkey authentication is required.</p>
+                        <p>Rules are evaluated in priority order (lower number first).<br/>
+                        The first matching rule determines access type. <br/>
+                        If no rule matches, passkey authentication is required.</p>
                     </div>
                         </group>
                         <group colspan="2">
@@ -91,43 +91,30 @@
                         <field name="url_patterns" widget="text"
                                placeholder="Regex patterns for URLs (one per line, # for comments)&#10;Examples:&#10;^/*  # This rule is the way to allow all requests! &#10;^/api/webhook.*&#10;^/public/.*&#10;^/health$&#10;For WebSocket rules: patterns match WebSocket upgrade request path&#10;^/ws/chat/.*  # WebSocket path"/>
                     </group>
-                    
-                    <notebook>
-                        
-                        <page string="IP/CIDR Configuration" invisible="access_type != 'cidr'">
-                            <group>
-                                <field name="allowed_cidrs" widget="text"
-                                    placeholder="CIDR blocks or IP for IP-based access (one per line, # for comments)&#10;Examples:&#10;192.168.1.0/24&#10;234.170.10.5&#10;234.170.10.5/32  # Same as above"/>
 
-                            </group>
-                        </page>
-                        <page string="Access Tokens" invisible="access_type != 'token'">
-                            <group invisible="access_type != 'token'" colspan="2">
-                                <field name="token_ids" 
-                                        nolabel="1"
-                                    context="{'default_host_id': host_id}"
-                                    >
-                                    <list>
-                                        <field name="name"/>
-                                        <field name="token_source"/>
-                                        <field name="header_name" optional="show"/>
-                                        <field name="param_name" optional="show"/>
-                                        <field name="is_active" widget="boolean_toggle"/>
-                                        <field name="expires_at" optional="show"/>
-                                    </list>
-                                </field>
-                            </group>
-                        </page>
-                        <page string="Advanced" name="page_debug" groups="base.group_no_one">
-                            <group>
-                                <group>
-                                    <field name="parsed_allowed_cidrs" />
-                                </group>
-                                <group>
-                                </group>
-                            </group>
-                        </page>
-                    </notebook>
+                    <group string="IP/CIDR Configuration" invisible="access_type != 'cidr'">
+                        <group>
+                            <field name="allowed_cidrs" widget="text"
+                                placeholder="CIDR blocks or IP for IP-based access (one per line, # for comments)&#10;Examples:&#10;192.168.1.0/24&#10;234.170.10.5&#10;234.170.10.5/32  # Same as above"/>
+                        </group>
+                        <group>
+                                <field name="parsed_allowed_cidrs" groups="base.group_no_one"/>
+                        </group>
+                    </group>
+
+                    <group string="Access Tokens" invisible="access_type != 'token'">
+                        <field name="token_ids" nolabel="1"
+                               context="{'default_host_id': host_id, 'list_view_ref':'sunray_core.sunray_webhook_token_listview_embedded'}" >
+                            <list>
+                                <field name="name"/>
+                                <field name="token_source"/>
+                                <field name="header_name" optional="show"/>
+                                <field name="param_name" optional="show"/>
+                                <field name="is_active" widget="boolean_toggle"/>
+                                <field name="expires_at" optional="show"/>
+                            </list>
+                        </field>
+                    </group>
                 </sheet>
             </form>
         </field>
@@ -138,7 +125,7 @@
         <field name="name">Access Rules</field>
         <field name="res_model">sunray.access.rule</field>
         <field name="view_mode">list,form</field>
-        <field name="search_view_id" ref="view_sunray_access_rule_search"/>
+        <field name="search_view_id" ref="sunray_access_rule_searchview"/>
         <field name="context">{'search_default_active': 1}</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">

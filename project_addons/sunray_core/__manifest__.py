@@ -56,8 +56,9 @@ Technical Components:
         'views/sunray_session_views.xml',
         'views/sunray_audit_log_views.xml',
         'views/sunray_api_key_views.xml',
+        'views/sunray_webhook_token_views.xml',
         'views/sunray_worker_views.xml',
-        
+
         # Menu (must be last)
         'views/sunray_menu.xml',
     ],

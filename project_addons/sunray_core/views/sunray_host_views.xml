@@ -162,17 +162,10 @@
                         </page>
                         
                         <page string="API &amp; Webhook Tokens">
-                            <field name="webhook_token_ids">
-                                <list>
-                                    <field name="name"/>
-                                    <field name="token_source"/>
-                                    <field name="header_name" optional="show"/>
-                                    <field name="param_name" optional="show"/>
-                                    <field name="is_active" widget="boolean_toggle"/>
-                                    <field name="expires_at" optional="show"/>
-                                    <field name="last_used" optional="show"/>
-                                    <field name="usage_count" optional="show"/>
-                                </list>
+ 
+                            <field name="webhook_token_ids" 
+                                   context="{'default_host_id': id, 'list_view_ref':'sunray_core.sunray_webhook_token_listview_embedded'}"
+                                   >
                                 <form>
                                     <sheet>
                                         <group>

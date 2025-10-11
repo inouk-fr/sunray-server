@@ -43,7 +43,15 @@ class SunrayWebhookToken(models.Model):
         string='Usage Count',
         help='Number of times this token has been used'
     )
-    
+
+    # UI display helper field
+    show_full_token = fields.Boolean(
+        string='Show Full Token',
+        default=False,
+        store=False,
+        help='Toggle to show/hide full token value in form view'
+    )
+
     # Optional restrictions
     allowed_cidrs = fields.Text(
         string='Allowed CIDRs', 
@@ -219,4 +227,26 @@ class SunrayWebhookToken(models.Model):
             'allowed_cidrs': self.get_allowed_cidrs(),
             'expires_at': self.expires_at.isoformat() if self.expires_at else None,
             'is_active': self.is_active
+        }
+
+    def btn_refresh(self):
+        """Refresh button action - reload the form"""
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'reload',
+        }
+
+    def action_view_usage_logs(self):
+        """View audit logs for this token's usage"""
+        self.ensure_one()
+        return {
+            'name': f'Usage Logs: {self.name}',
+            'type': 'ir.actions.act_window',
+            'res_model': 'sunray.audit.log',
+            'view_mode': 'list,form',
+            'domain': [
+                ('event_type', '=', 'webhook.used'),
+                ('details', 'ilike', f'"token_name": "{self.name}"')
+            ],
+            'context': {'search_default_group_by_date': 1}
         }
