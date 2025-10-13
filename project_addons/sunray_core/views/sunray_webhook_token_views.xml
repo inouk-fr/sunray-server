@@ -136,22 +136,21 @@
                                    help="Leave empty for secure auto-generation (32 characters). Only set manually if required for compatibility."/>
 
                             <!-- For existing records: display with toggle -->
-                            <div class="o_row" invisible="not id">
-                                <field name="show_full_token" widget="boolean_toggle" invisible="1"/>
-                                <label for="show_full_token" string="Show Full Token"/>
-                            </div>
+                            <field name="show_full_token"
+                                   groups="sunray_core.group_sunray_admin"                            
+                                   widget="boolean_toggle" />
 
                             <!-- Partial display when toggle is off -->
                             <field name="token"
                                    readonly="1"
-                                   invisible="not id or show_full_token"
+                                   invisible="show_full_token"
                                    string="Token (Partial)"
                                    password="True"/>
 
                             <!-- Full token with clipboard widget when toggle is on -->
                             <field name="token"
                                    readonly="1"
-                                   invisible="not id or not show_full_token"
+                                   invisible="not show_full_token"
                                    widget="CopyClipboardChar"
                                    string="Token (Full)"
                                    groups="sunray_core.group_sunray_admin"/>

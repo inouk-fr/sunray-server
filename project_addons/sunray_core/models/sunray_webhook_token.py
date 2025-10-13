@@ -44,8 +44,13 @@ class SunrayWebhookToken(models.Model):
         string='Show Full Token',
         default=False,
         store=False,
-        help='Toggle to show/hide full token value in form view'
+        help='Toggle to show/hide full token value in form view',
+        inverse='_inverse_show_full_token'
     )
+    def _inverse_show_full_token(self):
+        for record in self:
+            pass
+            #record.show_full_token = record.show_full_token
 
     # Optional restrictions
     allowed_cidrs = fields.Text(
@@ -101,6 +106,10 @@ class SunrayWebhookToken(models.Model):
                 vals['token'] = self.generate_token()
         return super().create(vals_list)
     
+    #def write(self, vals):
+    #    result = super().write(vals)
+    #    return result
+
     def generate_token(self):
         """Generate a secure random token"""
         alphabet = string.ascii_letters + string.digits
