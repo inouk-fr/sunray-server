@@ -109,10 +109,54 @@
                     
                     <notebook>
                         <page string="Access Rules">
-                            <field name="access_rule_ids" 
-                                   context="{'list_view_ref':'sunray_core.sunray_access_rule_listview_embedded'}"
-                                    />
-                            
+                            <div class="alert alert-info" role="status">
+                                <h3>Reusable Access Rule Library</h3>
+                                <p>
+                                    Access rules are now reusable! Select rules from the library and set their priority for this host.
+                                    The same rule can be used on multiple hosts with different priorities.
+                                </p>
+                                <p><strong>How to manage rules:</strong></p>
+                                <ul>
+                                    <li><strong>Select Rule:</strong> Choose from active rules in the library</li>
+                                    <li><strong>Set Priority:</strong> Lower number = higher priority (use drag-and-drop or edit manually)</li>
+                                    <li><strong>Active Toggle:</strong> Enable/disable rule on this specific host</li>
+                                    <li><strong>Create New Rules:</strong> Navigate to <strong>Sunray → Access Rule Library</strong></li>
+                                </ul>
+                            </div>
+
+                            <field name="access_rule_rel_ids" nolabel="1">
+                                <list editable="bottom">
+                                    <!-- Drag-and-drop handle for priority reordering -->
+                                    <field name="priority" widget="handle"/>
+
+                                    <!-- Rule selector (only active library rules) -->
+                                    <field name="rule_id"
+                                           options="{'no_create': True}"
+                                           domain="[('is_active', '=', True)]"/>
+
+                                    <!-- Display rule type (read-only) -->
+                                    <field name="rule_type" widget="badge" readonly="1"
+                                           decoration-success="rule_type == 'public'"
+                                           decoration-info="rule_type == 'cidr'"
+                                           decoration-warning="rule_type == 'token'"/>
+
+                                    <!-- Per-host active toggle -->
+                                    <field name="is_active" widget="boolean_toggle"/>
+
+                                    <!-- Quick view button -->
+                                    <button name="action_view_rule" type="object"
+                                            icon="fa-external-link"
+                                            title="View Rule Details"
+                                            class="btn-link"/>
+                                </list>
+                            </field>
+
+                            <div class="alert alert-success mt16" role="status">
+                                <p class="mb-0">
+                                    <strong>Tip:</strong> Drag rows to reorder priorities. Changes to rules in the library
+                                    automatically affect all hosts using them. Priority and active status are per-host.
+                                </p>
+                            </div>
                         </page>
                                                 
                         <page string="Authorized Users">

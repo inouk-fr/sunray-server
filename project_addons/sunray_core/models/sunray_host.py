@@ -41,11 +41,11 @@ class SunrayHost(models.Model):
              'Use Access Rules to configure public access instead of disabling protection.'
     )
     
-    # Access Rules (new unified approach)
-    access_rule_ids = fields.One2many(
-        'sunray.access.rule',
-        'host_id', 
-        string='Access Rules'
+    # Access Rules (via association model for reusability)
+    access_rule_rel_ids = fields.One2many(
+        'sunray.host.access.rule',
+        'host_id',
+        string='Access Rule Associations'
     )
     
     # WebSocket URL Prefix (authenticated paths that upgrade to WebSocket protocol)
@@ -397,15 +397,32 @@ class SunrayHost(models.Model):
         return result
     
     def get_exceptions_tree(self):
-        """Generate exceptions tree for Worker using Access Rules
-        
+        """Generate exceptions tree for Worker using Access Rule associations
+
         Returns:
             list: Ordered list of access exceptions for worker evaluation
         """
         self.ensure_one()
-        
-        # Use Access Rules system
-        return self.env['sunray.access.rule'].generate_exceptions_tree(self.id)
+
+        # Get active associations (both rule and association must be active)
+        associations = self.access_rule_rel_ids.filtered(
+            lambda rel: rel.is_active and rel.rule_id.is_active
+        ).sorted(key=lambda rel: (rel.priority, rel.id))
+
+        exceptions_tree = []
+        for assoc in associations:
+            rule = assoc.rule_id
+            # Get rule config without priority
+            rule_config = rule.get_worker_config()
+
+            # Inject priority from association
+            rule_config['priority'] = assoc.priority
+
+            # Only include rules with valid patterns
+            if rule_config.get('url_patterns'):
+                exceptions_tree.append(rule_config)
+
+        return exceptions_tree
     
     def get_config_data(self):
         """Generate configuration data for API endpoints
