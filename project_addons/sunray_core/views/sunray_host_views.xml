@@ -86,7 +86,7 @@
                     </group>
                     
                     <!-- Protection Disabled Warning -->
-                    <group string="Protection Status" invisible="is_active">
+                    <group string="Protection Status" invisible="is_active" name="protection_status">
                         <div class="alert alert-danger" role="alert">
                             <strong>⚠️ Protection Disabled:</strong> All traffic to this host is currently blocked with 503 Service Unavailable.
                             <br/>To allow public access, enable protection and create Public Access Rules instead.
