@@ -281,7 +281,16 @@ The `/config/register` endpoint handles all migration logic:
       "waf_bypass_revalidation_s": 900,
       "worker_id": 42,
       "worker_name": "demo-worker-001",
-      "config_version": "2024-01-01T11:55:00Z"
+      "config_version": "2024-01-01T11:55:00Z",
+      "remote_auth": {
+        "enabled": true,
+        "session_ttl": 3600,
+        "max_session_ttl": 7200,
+        "session_mgmt_enabled": true,
+        "session_mgmt_ttl": 120,
+        "polling_interval": 2,
+        "challenge_ttl": 300
+      }
     }
   ]
 }
@@ -303,6 +312,14 @@ The `/config/register` endpoint handles all migration logic:
 - `waf_bypass_revalidation_s`: WAF bypass cookie revalidation period in seconds (always present, default: 900)
 - `worker_id`: ID of the worker protecting this host (null if not yet bound)
 - `worker_name`: Name of the worker protecting this host (null if not yet bound)
+- `remote_auth` (object, optional): Remote Authentication configuration (Advanced feature - only present if `sunray_advanced_core` is installed)
+  - `enabled` (boolean): Whether Remote Authentication is enabled for this host
+  - `session_ttl` (integer): Default remote session duration in seconds
+  - `max_session_ttl` (integer): Maximum allowed remote session duration in seconds
+  - `session_mgmt_enabled` (boolean): Whether session management feature is enabled
+  - `session_mgmt_ttl` (integer): Session management access duration in seconds
+  - `polling_interval` (integer): Computer polling interval for challenge verification (seconds)
+  - `challenge_ttl` (integer): QR code/challenge validity duration (seconds)
 
 **Version Tracking**:
 - Each host includes its own `config_version` for cache invalidation
@@ -359,7 +376,16 @@ The `/config/register` endpoint handles all migration logic:
     },
     "bypass_waf_for_authenticated": true,
     "waf_bypass_revalidation_s": 900,
-    "config_version": "2024-01-01T11:55:00Z"
+    "config_version": "2024-01-01T11:55:00Z",
+    "remote_auth": {
+      "enabled": true,
+      "session_ttl": 3600,
+      "max_session_ttl": 7200,
+      "session_mgmt_enabled": true,
+      "session_mgmt_ttl": 120,
+      "polling_interval": 2,
+      "challenge_ttl": 300
+    }
   },
   "users": {
     "user@example.com": {
@@ -460,7 +486,16 @@ The `/config/register` endpoint handles all migration logic:
     },
     "bypass_waf_for_authenticated": true,
     "waf_bypass_revalidation_s": 900,
-    "config_version": "2024-01-01T11:55:00Z"
+    "config_version": "2024-01-01T11:55:00Z",
+    "remote_auth": {
+      "enabled": true,
+      "session_ttl": 3600,
+      "max_session_ttl": 7200,
+      "session_mgmt_enabled": true,
+      "session_mgmt_ttl": 120,
+      "polling_interval": 2,
+      "challenge_ttl": 300
+    }
   },
   "users": {
     "user@example.com": {
@@ -993,6 +1028,344 @@ curl -X POST https://sunray.example.com/sunray-srvr/v1/users/user@example.com/pa
 2. Call logout endpoint
 3. Redirect to logout confirmation page
 
+## Remote Authentication (Advanced Feature)
+
+**Availability**: This is a **PAID feature** available only in Sunray Advanced Core (`sunray_advanced_core` addon).
+
+**Feature Detection**: Workers detect Remote Authentication availability by checking for the presence of a `remote_auth` object in the `/sunray-srvr/v1/config` response. If the object is missing, the feature is not available.
+
+**Feature Overview**:
+Remote Authentication allows users to authenticate to Protected Hosts using their mobile device's passkey while accessing from a different device (e.g., shared computer, kiosk). This enables secure access from untrusted devices without exposing credentials.
+
+**Architecture - Hybrid Model**:
+The system uses a hybrid authentication approach for optimal security and performance:
+
+1. **Server Role**:
+   - Stores and manages WebAuthn credentials
+   - Provides user credentials to Workers for verification
+   - Creates and manages sessions after Worker verification
+   - Enforces session policies and TTL constraints
+
+2. **Worker Role**:
+   - Performs local WebAuthn verification using credentials from Server
+   - Generates and manages JWT tokens
+   - Handles QR code generation and challenge management
+   - Provides session management UI to users
+
+This design ensures:
+- Cryptographic operations happen close to the user (low latency)
+- Centralized credential and session management (security)
+- Reduced network roundtrips during authentication
+- Better resilience to network issues
+
+---
+
+### POST /sunray-srvr/v1/sessions/remote
+
+**Purpose**: Creates a remote session after Worker has verified WebAuthn credential locally.
+
+**Authentication**: API key required
+
+**Flow**:
+1. Worker performs local WebAuthn verification
+2. Worker calls this endpoint with verification results
+3. Server trusts Worker verification and creates session
+4. Worker generates JWT token for the session
+
+**Request Body**:
+```json
+{
+  "worker_id": "sunray-worker-01",
+  "protected_host_id": 123,
+  "user_id": 456,
+  "session_duration": 3600,
+  "device_info": {
+    "user_agent": "Mozilla/5.0...",
+    "ip_address": "192.168.1.50",
+    "device_type": "mobile",
+    "browser": "Chrome Mobile"
+  }
+}
+```
+
+**Field Descriptions**:
+- `worker_id` (string, required): Worker identifier
+- `protected_host_id` (integer, required): Host ID (maps internally to `host_id`)
+- `user_id` (integer, required): User ID who is authenticating
+- `session_duration` (integer, optional): Requested session duration in seconds
+  - If not provided, uses host's `remote_auth_session_ttl` default
+  - Cannot exceed host's `remote_auth_max_session_ttl`
+  - Minimum 300 seconds (5 minutes)
+  - Maximum 86400 seconds (24 hours)
+- `device_info` (object, required): Device metadata from Worker
+  - `user_agent` (string, required): Full user agent string
+  - `ip_address` (string, required): Client IP address
+  - `device_type` (string, optional): "mobile", "desktop", "tablet"
+  - `browser` (string, optional): Browser name and version
+
+**Response** (Success):
+```json
+{
+  "success": true,
+  "session_id": "sess_abc123def456",
+  "user_id": 456,
+  "username": "user@example.com",
+  "expires_at": "2025-10-17T14:00:00Z",
+  "session_type": "remote",
+  "created_at": "2025-10-17T13:00:00Z"
+}
+```
+
+**Error Responses**:
+```json
+// Host not found
+{
+  "error": "Host not found",
+  "code": 404
+}
+
+// Remote auth not enabled for host
+{
+  "error": "Remote authentication not enabled for this host",
+  "code": 501
+}
+
+// Session duration exceeds maximum
+{
+  "error": "Session duration cannot exceed 7200 seconds",
+  "code": 422
+}
+
+// Missing TTL configuration
+{
+  "error": "Remote auth TTL not configured for this host",
+  "code": 500
+}
+
+// Missing required fields
+{
+  "error": "Missing required fields",
+  "code": 400
+}
+```
+
+**HTTP Status Codes**:
+- `200`: Session created successfully
+- `400`: Missing required fields or invalid request
+- `401`: Unauthorized (invalid API key)
+- `404`: Host or user not found
+- `422`: Validation error (duration constraints)
+- `500`: Server configuration error
+- `501`: Feature not enabled for host
+
+**Audit Events**: Creates `session.remote_created` audit event.
+
+**Example**:
+```bash
+curl -X POST https://sunray.example.com/sunray-srvr/v1/sessions/remote \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "worker_id": "sunray-worker-cf-001",
+    "protected_host_id": 42,
+    "user_id": 123,
+    "session_duration": 3600,
+    "device_info": {
+      "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)",
+      "ip_address": "203.0.113.45",
+      "device_type": "mobile",
+      "browser": "Safari Mobile"
+    }
+  }'
+```
+
+---
+
+### GET /sunray-srvr/v1/sessions/list/{user_id}
+
+**Purpose**: Lists all active sessions for a specific user, optionally filtered by host.
+
+**Authentication**: API key required
+
+**URL Parameters**:
+- `user_id` (integer, required): User ID to list sessions for
+
+**Query Parameters**:
+- `protected_host_id` (integer, optional): Filter sessions by specific host
+
+**Request Example**:
+```bash
+# All sessions for user
+GET /sunray-srvr/v1/sessions/list/456
+
+# Sessions for user on specific host
+GET /sunray-srvr/v1/sessions/list/456?protected_host_id=123
+```
+
+**Response** (Success):
+```json
+{
+  "success": true,
+  "user_id": 456,
+  "username": "user@example.com",
+  "total_sessions": 3,
+  "sessions": [
+    {
+      "session_id": "sess_abc123",
+      "session_type": "remote",
+      "host_id": 123,
+      "host_domain": "app.example.com",
+      "created_at": "2025-10-17T13:00:00Z",
+      "expires_at": "2025-10-17T14:00:00Z",
+      "last_activity": "2025-10-17T13:45:00Z",
+      "device_info": {
+        "user_agent": "Mozilla/5.0...",
+        "ip_address": "192.168.1.50",
+        "device_type": "mobile",
+        "browser": "Chrome Mobile"
+      }
+    },
+    {
+      "session_id": "sess_def456",
+      "session_type": "normal",
+      "host_id": 124,
+      "host_domain": "admin.example.com",
+      "created_at": "2025-10-17T12:00:00Z",
+      "expires_at": "2025-10-17T20:00:00Z",
+      "last_activity": "2025-10-17T13:30:00Z",
+      "device_info": {
+        "user_agent": "Mozilla/5.0...",
+        "ip_address": "192.168.1.100",
+        "device_type": "desktop",
+        "browser": "Firefox"
+      }
+    }
+  ]
+}
+```
+
+**Response** (No sessions):
+```json
+{
+  "success": true,
+  "user_id": 456,
+  "username": "user@example.com",
+  "total_sessions": 0,
+  "sessions": []
+}
+```
+
+**Error Responses**:
+```json
+// User not found
+{
+  "error": "User not found",
+  "code": 404
+}
+
+// Unauthorized
+{
+  "error": "Unauthorized",
+  "code": 401
+}
+```
+
+**HTTP Status Codes**:
+- `200`: Success (including empty list)
+- `401`: Unauthorized (invalid API key)
+- `404`: User not found
+
+**Use Cases**:
+- Display active sessions in mobile app
+- Allow users to review devices with access
+- Enable users to identify suspicious sessions
+- Support "Where you're signed in" feature
+
+**Example**:
+```bash
+# List all sessions for user 456
+curl https://sunray.example.com/sunray-srvr/v1/sessions/list/456 \
+  -H "Authorization: Bearer YOUR_API_KEY"
+
+# List sessions for user 456 on host 123
+curl "https://sunray.example.com/sunray-srvr/v1/sessions/list/456?protected_host_id=123" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+---
+
+### DELETE /sunray-srvr/v1/sessions/{session_id}
+
+**Purpose**: Terminates a specific session by ID. Used for session management features.
+
+**Authentication**: API key required
+
+**Authorization**: Users can only terminate their own sessions (enforced server-side).
+
+**URL Parameters**:
+- `session_id` (string, required): Session ID to terminate
+
+**Request Body**: None required
+
+**Response** (Success):
+```json
+{
+  "success": true,
+  "session_id": "sess_abc123",
+  "message": "Session terminated successfully"
+}
+```
+
+**Error Responses**:
+```json
+// Session not found
+{
+  "error": "Session not found",
+  "code": 404
+}
+
+// Unauthorized (invalid API key)
+{
+  "error": "Unauthorized",
+  "code": 401
+}
+
+// Forbidden (session belongs to different user)
+{
+  "error": "Cannot terminate session for another user",
+  "code": 403
+}
+```
+
+**HTTP Status Codes**:
+- `200`: Session terminated successfully
+- `401`: Unauthorized (invalid API key)
+- `403`: Forbidden (cannot terminate another user's session)
+- `404`: Session not found or already expired
+
+**Audit Events**: Creates `session.terminated` audit event.
+
+**Use Cases**:
+- User terminates suspicious session from mobile app
+- User logs out from specific device
+- "Sign out everywhere else" functionality
+- Remote device management
+
+**Example**:
+```bash
+curl -X DELETE https://sunray.example.com/sunray-srvr/v1/sessions/sess_abc123 \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+**Worker Implementation Notes**:
+1. Worker obtains user_id from JWT context
+2. Worker passes session_id to Server
+3. Server validates session belongs to user
+4. Server terminates session and logs audit event
+5. Worker returns success response to client
+
+---
+
 ### POST /sunray-srvr/v1/audit
 
 **Purpose**: Records audit events from workers.
@@ -1025,7 +1398,7 @@ curl -X POST https://sunray.example.com/sunray-srvr/v1/users/user@example.com/pa
 - Access Control Events (e.g., `auth.success`, `auth.failure`)
 - Token Management Events (e.g., `token.generated`, `token.consumed`)
 - Configuration Events (e.g., `config.fetched`, `config.session_duration_changed`)
-- Session Events (e.g., `session.created`, `session.expired`)
+- Session Events (e.g., `session.created`, `session.expired`, `session.remote_created`, `session.terminated`)
 - WAF Bypass Events (e.g., `waf_bypass.created`, `waf_bypass.tamper.*`)
 - Security Events (e.g., `security.alert`, `security.cross_domain_session`, `security.host_id_mismatch`, `security.unmanaged_host_access`, `SESSION_IP_CHANGED`)
 - Worker Migration Events (e.g., `worker.migration_requested`, `worker.migration_completed`, `worker.registration_blocked`)
@@ -1058,7 +1431,9 @@ Common HTTP status codes:
 - `401`: Unauthorized (invalid API key)
 - `403`: Forbidden (access denied)
 - `404`: Not Found (resource doesn't exist)
+- `422`: Unprocessable Entity (validation error, e.g., TTL constraints)
 - `500`: Internal Server Error
+- `501`: Not Implemented (feature not enabled or not available)
 
 ## Caching Guidelines
 

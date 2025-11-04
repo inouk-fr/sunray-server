@@ -519,12 +519,13 @@ class SunrayRESTController(http.Controller):
             return self._json_response(error_details, status=409)
         
         # Build host-specific configuration using centralized method
+        host_config_list = host_obj.get_config_data()
         config = {
             'version': 4,  # API version
             'generated_at': fields.Datetime.now().isoformat(),
             'worker_id': worker_obj.id,
             'worker_name': worker_obj.name,
-            'host': host_obj.get_config_data()  # Includes is_active field
+            'host': host_config_list[0] if host_config_list else None  # Includes is_active and all other fields
         }
         
         # Audit log registration to inactive host (if applicable)
@@ -620,12 +621,13 @@ class SunrayRESTController(http.Controller):
         
         # Handle GET request - return full configuration
         # Build host-specific configuration using centralized method
+        host_config_list = host_obj.get_config_data()
         config = {
             'version': 4,  # API version
             'generated_at': fields.Datetime.now().isoformat(),
             'worker_id': worker_obj.id,
             'worker_name': worker_obj.name,
-            'host': host_obj.get_config_data()  # Includes is_active and all other fields
+            'host': host_config_list[0] if host_config_list else None  # Includes is_active and all other fields
         }
         
         # Setup request context and log config fetch

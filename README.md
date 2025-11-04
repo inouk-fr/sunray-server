@@ -34,7 +34,8 @@ This dual approach means you never have to compromise between sovereignty, perfo
 
 - 🛡️ **Zero Trust Architecture**: Default deny with granular access control - no user or system is trusted by default
 - 🚫 **Advanced Attack Protection**: Guards against zero-day exploits, injection attacks, and emerging web threats
-- 🔐 **WebAuthn/Passkeys**: Passwordless biometric authentication for maximum security and user convenience  
+- 🔐 **WebAuthn/Passkeys**: Passwordless biometric authentication for maximum security and user convenience
+- 📱 **Remote Authentication**: Authenticate from any device using mobile passkey - perfect for shared computers (Advanced feature)
 - 🔌 **API & Webhook Ready**: Seamless protection for automated systems, microservices, and machine-to-machine communications
 - 📦 **Zero Modification Required**: Protect existing applications without any code changes or architectural modifications
 - 👥 **Small Team Friendly**: Intuitive management interface designed for teams with limited IT resources
@@ -191,10 +192,13 @@ bin/sunray-srvr srctl host clear-pending-worker app.example.com
 - **Default Locked**: All resources protected by default
 - **Access Rules System**: Priority-based rule evaluation
   - **Public Access**: No authentication required
-  - **CIDR Access**: IP address/range whitelist  
+  - **CIDR Access**: IP address/range whitelist
   - **Token Access**: API/webhook token authentication
 - **WebAuthn/Passkeys**: Primary authentication method
+- **Remote Authentication**: Mobile device authentication for shared/untrusted computers (Advanced)
 - **Session Management**: Secure cookies with configurable TTL
+  - Normal sessions: Standard TTL (default 8h)
+  - Remote sessions: Shorter TTL for untrusted devices (default 1h)
 - **WAF Bypass**: Authenticated users can bypass WAF rules for improved performance
 - **Worker Security**: Auto-registration with comprehensive audit trails
 

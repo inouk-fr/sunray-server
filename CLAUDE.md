@@ -47,6 +47,32 @@ Think of Sunray as a security bouncer at a club entrance:
 3. **Sunray CLI (part of Sunray Server)**: An odoo CLI to manage Sunray server's components
 4. **Protected Hosts**: Web sites/app to protect
 
+### Advanced Features (Paid)
+
+**Sunray Advanced Core** (`advanced_addons/sunray_advanced_core/`) extends the base system with premium features:
+
+- **Remote Authentication**: Mobile device authentication for shared/untrusted computers
+  - Users scan QR code on computer with mobile device
+  - WebAuthn verification happens on mobile
+  - Separate session management with shorter TTLs
+  - Built-in session management UI for users
+
+- **Bulk Setup Token Generation**: Automated user onboarding
+  - Generate setup tokens for multiple users at once
+  - Email delivery with customizable templates
+  - Batch processing for large organizations
+
+- **Advanced Session Management**: Multi-device session control
+  - Users can view all active sessions
+  - Remote session termination from any device
+  - Device fingerprinting and metadata tracking
+
+**Module Structure**:
+- Extends base models using `_inherit` pattern
+- Adds API endpoints by extending `RestAPI` controller
+- Configuration via XML data files (NO code defaults)
+- Feature detection via presence check in API responses
+
 ## Development Guidelines
 
 ### API Development
@@ -54,6 +80,15 @@ Think of Sunray as a security bouncer at a club entrance:
 - The API Contract is the authoritative source of truth for all worker implementations
 - Server enforces all business logic and validation; workers are thin translation layers
 - Follow server-centric design principles: no worker-side validation or default values
+
+### Advanced Feature Development
+- Advanced/paid features MUST be implemented in `advanced_addons/sunray_advanced_core/` addon
+- Extend base models using `_inherit` pattern (never modify core models directly)
+- Add API endpoints by extending the `RestAPI` controller class
+- Document all new endpoints in `docs/API_CONTRACT.md`
+- System parameters MUST be defined via XML data files (NO defaults in code)
+- Feature detection: Workers check for feature presence in API responses (e.g., `remote_auth` object)
+- Use `protected_host_id` in API documentation/examples (maps to `host_id` internally)
 
 ### Passkey Registration Security
 - All passkey registrations MUST use setup tokens for authorization
@@ -123,13 +158,26 @@ Sunray is organized as separate repositories following a server-centric architec
 ```
 /opt/muppy/appserver-sunray18/
 ├── project_addons/            # Odoo 18 addons (ikb standard)
-│   ├── sunray_core/           # Free edition addon
+│   ├── sunray_core/           # Free/Core edition addon
 │   │   ├── __manifest__.py
 │   │   ├── models/
 │   │   ├── controllers/
 │   │   ├── views/
 │   │   └── security/
-│   └── sunray_enterprise/     # Advanced edition addon (future)
+├── advanced_addons/           # Paid/Advanced features
+│   └── sunray_advanced_core/  # Advanced edition addon
+│       ├── __manifest__.py
+│       ├── models/
+│       │   ├── sunray_host.py      # Remote auth config fields
+│       │   └── sunray_session.py   # Session type tracking
+│       ├── controllers/
+│       │   └── rest_api.py         # Remote auth endpoints
+│       ├── data/
+│       │   └── ir_config_parameter.xml  # Remote auth system params
+│       ├── views/
+│       │   └── sunray_host_views.xml    # Remote auth UI
+│       └── wizards/
+│           └── setup_token_bulk_wizard.py  # Bulk token generation
 ├── docs/                      # Documentation
 │   ├── market_analysis_pricing_comparison.md
 │   └── mvp_implementation_plan.md
@@ -220,6 +268,22 @@ cd /opt/muppy/appserver-sunray18 && bin/sunray-srvr --workers=4 --logfile=./sunr
 bin/sunray-srvr -u sunray_core               # Update sunray_core module
 bin/sunray-srvr -u all --stop-after-init     # Update all modules and exit
 bin/sunray-srvr -i sunray_core               # Install sunray_core module
+
+# IMPORTANT: Module Update/Install Procedure
+# Always follow these steps when updating/installing modules:
+# 1. Kill any running sunray-srvr processes
+pkill -f sunray-srvr
+
+# 2. Remove old log file to avoid confusion
+rm -f ./sunray-srvr-update.log
+
+# 3. Run update with fresh log file
+bin/sunray-srvr -u all --stop-after-init --logfile=./sunray-srvr-update.log
+
+# 4. Analyze the log for errors (look at the END of the log, not intermediate errors)
+tail -130 sunray-srvr-update.log
+# Check for final result line: "Registry loaded in X.XXs" indicates SUCCESS
+# Look for "CRITICAL" or "ERROR" near the end for actual failures
 
 # Testing - Pure Launcher Philosophy
 # The test launcher is a thin parameter translator - Odoo handles ALL output directly
@@ -961,6 +1025,139 @@ Worker Receives (exceptions_tree):
 - Geographic restrictions
 - Rule templates and sharing
 - Advanced audit reporting
+
+### Remote Authentication (Advanced Feature) ✅
+
+**Implementation Status: COMPLETED**
+
+**Module**: `advanced_addons/sunray_advanced_core/` (Paid feature)
+
+Remote Authentication enables users to authenticate to Protected Hosts using their mobile device's passkey while accessing from an untrusted device (e.g., shared computer, kiosk, library terminal).
+
+**Architecture - Hybrid Model:**
+```
+┌────────────────────────────────────────────────────────┐
+│  1. Computer displays QR code (Worker generates)      │
+└────────────────────────────────────────────────────────┘
+                      ↓ User scans with mobile
+┌────────────────────────────────────────────────────────┐
+│  2. Mobile: WebAuthn verification (Worker handles)    │
+│     - Credential fetch from Server                    │
+│     - Local cryptographic verification                │
+│     - Challenge validation                            │
+└────────────────────────────────────────────────────────┘
+                      ↓ Verification successful
+┌────────────────────────────────────────────────────────┐
+│  3. Server: Session creation (POST /sessions/remote)  │
+│     - Shorter TTL than normal sessions                │
+│     - Session type = 'remote'                         │
+│     - Device metadata stored                          │
+└────────────────────────────────────────────────────────┘
+                      ↓ Session created
+┌────────────────────────────────────────────────────────┐
+│  4. Worker: JWT token generation & computer access    │
+└────────────────────────────────────────────────────────┘
+```
+
+**Why Hybrid?**
+- **Server**: Stores credentials, manages sessions, enforces policies
+- **Worker**: Performs WebAuthn verification (low latency, user proximity)
+- **Benefits**: Fast authentication, centralized management, network resilience
+
+**Key Features:**
+
+1. **Per-Host Configuration** (in `sunray.host` model):
+   - `remote_auth_enabled`: Feature toggle (boolean)
+   - `remote_auth_session_ttl`: Default session duration (3600s = 1h)
+   - `remote_auth_max_session_ttl`: Maximum allowed duration (7200s = 2h)
+   - `session_mgmt_enabled`: Allow users to view/manage sessions
+   - `session_mgmt_ttl`: Session management access duration (120s)
+
+2. **Session Type Tracking** (in `sunray.session` model):
+   - `session_type`: 'normal' or 'remote'
+   - `created_via`: JSON metadata (device info, browser, IP)
+   - Enables differentiated policies and UI display
+
+3. **API Endpoints** (`/sunray-srvr/v1/`):
+   - `POST /sessions/remote` - Create remote session after Worker verification
+   - `GET /sessions/list/{user_id}` - List all user sessions (with filtering)
+   - `DELETE /sessions/{session_id}` - Terminate specific session
+
+4. **System Parameters** (via XML data files):
+   - `remote_auth.polling_interval`: Computer polling interval (2s)
+   - `remote_auth.challenge_ttl`: QR code validity (300s = 5min)
+   - **NO code defaults** - parameters MUST exist in database
+
+**Configuration API Changes:**
+
+The `/config` endpoint now includes a `remote_auth` object for hosts with the feature enabled:
+
+```json
+{
+  "host": {
+    "domain": "app.example.com",
+    "remote_auth": {
+      "enabled": true,
+      "session_ttl": 3600,
+      "max_session_ttl": 7200,
+      "session_mgmt_enabled": true,
+      "session_mgmt_ttl": 120,
+      "polling_interval": 2,
+      "challenge_ttl": 300
+    }
+  }
+}
+```
+
+**Feature Detection:**
+Workers detect Remote Authentication availability by checking for the `remote_auth` object in the config response. If absent, feature is not available.
+
+**Security Considerations:**
+- Remote sessions have shorter TTLs by default (1h vs 8h for normal)
+- Users can't extend beyond configured maximum
+- Session management requires recent passkey verification
+- All remote auth actions generate audit events
+- Device metadata tracked for forensics
+
+**User Workflow:**
+1. Computer: Visit protected host → Redirected to auth page
+2. Computer: Click "Sign in with Mobile" → QR code displayed
+3. Mobile: Open mobile app → Scan QR code
+4. Mobile: Approve with biometric/passkey → Choose session duration
+5. Computer: Automatically logged in → Access granted
+6. Mobile: View all sessions → Terminate suspicious sessions
+
+**Admin Workflow:**
+1. Navigate to Sunray → Protected Hosts → Select host
+2. Go to "Remote Authentication" tab
+3. Enable feature and configure session durations
+4. Save → Workers auto-detect feature via config refresh
+
+**Related Documentation:**
+- API Specification: `docs/API_CONTRACT.md` (Remote Authentication section)
+- Implementation Spec: `inouk-sunray-worker-cloudflare/specs/remote_authentication_server_spec.md`
+- User Guide: `docs/remote_authentication_guide.md` (future)
+
+**Implementation Files:**
+```
+advanced_addons/sunray_advanced_core/
+├── models/
+│   ├── sunray_host.py         # 5 new fields for remote auth config
+│   └── sunray_session.py      # 2 new fields for session tracking
+├── controllers/
+│   └── rest_api.py            # 3 new endpoints + extended config
+├── data/
+│   └── ir_config_parameter.xml  # System parameters (NO code defaults)
+└── views/
+    └── sunray_host_views.xml  # Remote Authentication tab in host form
+```
+
+**Future Enhancements:**
+- Mobile app for QR code scanning
+- Push notifications for session requests
+- Geo-fencing for remote authentication
+- Time-based remote auth policies
+- Multi-factor authentication chains
 
 ## Configuration Management
 

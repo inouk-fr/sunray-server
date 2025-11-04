@@ -236,7 +236,7 @@
                             </div>
                         </page>
 
-                        <page string="Configuration">
+                        <page string="Configuration" name="page_configuration">
                             <group string="Session Settings">
                                 <field name="session_duration_s"/>
                             </group>
@@ -245,11 +245,14 @@
                                 <field name="websocket_url_prefix" placeholder="/ws/"/>
                             </group>
                             
-                            <group string="WAF Integration">
-                                <field name="bypass_waf_for_authenticated"/>
-                                <field name="waf_bypass_revalidation_s" invisible="not bypass_waf_for_authenticated"/>
+                            <group string="WAF Integration" name="waf_integration_group">
+                                <group>
+                                    <field name="bypass_waf_for_authenticated"/>
+                                </group>
+                                <group>
+                                    <field name="waf_bypass_revalidation_s" invisible="not bypass_waf_for_authenticated"/>
+                                </group>
                             </group>
-                            
                         </page>
                         
                         <page string="Helpers">

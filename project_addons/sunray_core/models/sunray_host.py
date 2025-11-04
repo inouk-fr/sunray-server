@@ -430,40 +430,33 @@ class SunrayHost(models.Model):
         This method consolidates host configuration data generation used by
         multiple API endpoints (/config, /config/register, /config/<hostname>).
         
-        Returns:
-            - Single dict when len(self) == 1
-            - List of dicts when len(self) > 1  
-            - {'hosts': []} when empty recordset
+        Returns: List of host configuration dicts or []
             
         The returned data is the union of all endpoint needs and includes
         the is_active flag for worker decision making.
         """
         if not self:
-            return {'hosts': []}
+            return []
         
         result = []
-        for host in self:
+        for host_obj in self:
             config = {
-                'domain': host.domain,
-                'is_active': host.is_active,  # NEW: Critical for worker blocking logic
-                'backend': host.backend_url,
-                'nb_authorized_users': len(host.user_ids.filtered(lambda u: u.is_active)),
-                'session_duration_s': host.session_duration_s,
-                'websocket_url_prefix': host.websocket_url_prefix,
-                'exceptions_tree': host.get_exceptions_tree(),
-                'bypass_waf_for_authenticated': host.bypass_waf_for_authenticated,
-                'waf_bypass_revalidation_s': host.waf_bypass_revalidation_s,
-                'config_version': host.config_version.isoformat() if host.config_version else None,
-                'worker_id': host.sunray_worker_id.id if host.sunray_worker_id else None,
-                'worker_name': host.sunray_worker_id.name if host.sunray_worker_id else None,
+                'id': host_obj.id,
+                'domain': host_obj.domain,
+                'is_active': host_obj.is_active,  # NEW: Critical for worker blocking logic
+                'backend': host_obj.backend_url,
+                'nb_authorized_users': len(host_obj.user_ids.filtered(lambda u: u.is_active)),
+                'session_duration_s': host_obj.session_duration_s,
+                'websocket_url_prefix': host_obj.websocket_url_prefix,
+                'exceptions_tree': host_obj.get_exceptions_tree(),
+                'bypass_waf_for_authenticated': host_obj.bypass_waf_for_authenticated,
+                'waf_bypass_revalidation_s': host_obj.waf_bypass_revalidation_s,
+                'config_version': host_obj.config_version.isoformat() if host_obj.config_version else None,
+                'worker_id': host_obj.sunray_worker_id.id if host_obj.sunray_worker_id else None,
+                'worker_name': host_obj.sunray_worker_id.name if host_obj.sunray_worker_id else None,
             }
-            result.append(config)
-        
-        # Return format based on recordset size
-        if len(self) == 1:
-            return result[0]
-        else:
-            return result
+            result.append(config)    
+        return result
     
     def write(self, vals):
         """Override to update config_version on any change and audit timing changes"""
