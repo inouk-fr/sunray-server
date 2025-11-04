@@ -54,13 +54,15 @@ log_step "Setting up company configuration"
 log_step "  Company: $MPY_USERINIT_USER_COMPANY"
 log_step "  Email: $IKB_SMTP_USER"
 log_step "  Website: $MPY_USERINIT_WEBSITE"
-log_step "  Base URL: $APP_PRIMARY_URL"
+log_step "  Primary / Direct URL: $APP_PRIMARY_URL"
+log_step "  Public URL.         : $APP_LOADBALANCER_URL"
+log_step "  Effective URL       : $APP_EFFECTIVE_URL"
 log_step "  Partner root name: $MPY_USERINIT_PARTNER_ROOT_NAME"
 
 bin/sunray-srvr setup-company --name="$MPY_USERINIT_USER_COMPANY" \
     --email=$IKB_SMTP_USER \
     --website="$MPY_USERINIT_WEBSITE" \
-    --base-url=$APP_PRIMARY_URL \
+    --base-url=$APP_EFFECTIVE_URL \
     --update-partner \
     --partner-root-name="$MPY_USERINIT_PARTNER_ROOT_NAME"
 
