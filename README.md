@@ -105,6 +105,49 @@ inouk-sunray-server/
 └── etc/                       # Configuration files
 ```
 
+## 🐳 Docker Deployment
+
+Sunray Server is available as a Docker image with automated builds via GitHub Actions.
+
+### Quick Docker Run
+
+```bash
+# Pull the latest image from GitHub Container Registry
+docker pull ghcr.io/inouk-fr/sunray-server:latest
+
+# Run with PostgreSQL connection
+docker run -d \
+  --name sunray-server \
+  -p 8069:8069 \
+  -e PGUSER=odoo \
+  -e PGPASSWORD=your_password \
+  -e PGDATABASE=sunray \
+  -e PGHOST=db.example.com \
+  -e PGPORT=5432 \
+  ghcr.io/inouk-fr/sunray-server:latest
+```
+
+### Available Tags
+
+- `latest` - Latest stable build from main branch
+- `develop` - Development builds
+- `v1.2.3` - Specific version tags
+- `main-<sha>` - Specific commit builds
+
+### CI/CD with GitHub Actions
+
+This repository includes automated Docker builds via GitHub Actions:
+
+- ✅ Automatic builds on push/PR
+- ✅ Multi-tag support (branch, version, SHA)
+- ✅ GitHub Container Registry (ghcr.io)
+- ✅ Docker layer caching for faster builds
+- ✅ Build attestation for supply chain security
+
+**Setup Guide**: See [.github/GITHUB_ACTIONS_SETUP.md](.github/GITHUB_ACTIONS_SETUP.md) for complete configuration instructions.
+
+**Migrating from GitLab**: The repository supports both GitLab AutoDevOps and GitHub Actions. See the setup guide for migration steps.
+
 ## 🚀 Quick Start
 
 ### Prerequisites
