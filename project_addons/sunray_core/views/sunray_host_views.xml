@@ -173,15 +173,19 @@
                         </page>
                                                 
                         <page string="Authorized Users">
-                            <field name="user_ids" nolabel="1">
+                            <field name="user_stat_ids" nolabel="1" readonly="1">
                                 <list>
                                     <field name="username"/>
                                     <field name="email" optional="show"/>
                                     <field name="is_active" widget="boolean_toggle"/>
-                                    <field name="passkey_host_count" string="Passkeys"/>
-                                    <field name="setup_token_host_count" string="Setup Tokens"/>
+                                    <field name="passkey_count" string="Passkeys"/>
+                                    <field name="setup_token_count" string="Setup Tokens"/>
                                     <field name="active_session_count" string="Active Sessions"/>
                                     <field name="last_login" optional="show"/>
+                                    <button name="btn_remove_user" string="Remove User" type="object"
+                                        icon="fa-trash" class="btn-danger"
+                                        confirm="This will remove the user from this host and delete all their passkeys, setup tokens, and sessions for this host. Continue?"
+                                        help="Remove user from this host and delete all host-specific credentials"/>
                                 </list>
                             </field>
                         </page>

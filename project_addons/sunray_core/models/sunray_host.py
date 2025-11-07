@@ -72,6 +72,14 @@ class SunrayHost(models.Model):
         'user_id',
         string='Authorized Users'
     )
+
+    # User statistics report (auto-synced with user_ids)
+    user_stat_ids = fields.One2many(
+        'sunray.protected_host_user_list_report',
+        'host_id',
+        string='User Statistics',
+        help='Statistics for each authorized user. Auto-synced when user_ids changes.'
+    )
     
     # Session overrides
     session_duration_s = fields.Integer(
@@ -192,7 +200,45 @@ class SunrayHost(models.Model):
                 raise ValidationError("WAF bypass revalidation period must be at least 60 seconds (1 minute)")
             if record.waf_bypass_revalidation_s > max_revalidation:
                 raise ValidationError(f"WAF bypass revalidation period cannot exceed {max_revalidation} seconds (cf. System Parameter 'sunray.max_waf_bypass_revalidation_s').")
-    
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Override create to sync user stats after creation"""
+        hosts = super().create(vals_list)
+        hosts._sync_user_stats()
+        return hosts
+
+    def write(self, vals):
+        """Override write to sync user stats when user_ids changes"""
+        res = super().write(vals)
+        if 'user_ids' in vals:
+            self._sync_user_stats()
+        return res
+
+    def _sync_user_stats(self):
+        """Synchronize user statistics records with authorized users
+
+        Creates or updates records in protected_host_user_list_report table
+        to match the current list of authorized users.
+        """
+        ReportModel = self.env['sunray.protected_host_user_list_report']
+
+        for host_obj in self:
+            existing_stat_objs = ReportModel.search([('host_id', '=', host_obj.id)])
+            existing_user_ids = set(existing_stat_objs.mapped('user_id').ids)
+            current_user_ids = set(host_obj.user_ids.ids)
+
+            to_delete = existing_stat_objs.filtered(lambda s: s.user_id.id not in current_user_ids)
+            if to_delete:
+                to_delete.unlink()
+
+            new_user_ids = current_user_ids - existing_user_ids
+            for user_id in new_user_ids:
+                ReportModel.create({
+                    'host_id': host_obj.id,
+                    'user_id': user_id,
+                })
+
     @api.depends('migration_requested_at')
     def _compute_migration_pending_duration(self):
         """Compute human-readable duration for pending migrations"""
@@ -715,7 +761,7 @@ class SunrayHost(models.Model):
             raise UserError(f"Failed to clear worker cache: {str(e)}")
     
     def btn_refresh(self):
-        pass
+        self._sync_user_stats()
     
     def action_view_active_users(self):
         """Open list of active users authorized for this host"""
