@@ -433,3 +433,15 @@ class SunrayPasskey(models.Model):
                 username=username
             )
             raise
+
+    def init(self):
+        """Create database indexes for optimal query performance
+
+        Creates composite index for user+host_domain lookups, which is used by:
+        - sunray.protected_host_user_list_report view (passkey_count subselect)
+        - Any other queries filtering by user and host domain
+        """
+        self.env.cr.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sunray_passkey_user_host_domain
+            ON sunray_passkey(user_id, host_domain)
+        """)

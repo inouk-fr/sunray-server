@@ -201,43 +201,6 @@ class SunrayHost(models.Model):
             if record.waf_bypass_revalidation_s > max_revalidation:
                 raise ValidationError(f"WAF bypass revalidation period cannot exceed {max_revalidation} seconds (cf. System Parameter 'sunray.max_waf_bypass_revalidation_s').")
 
-    @api.model_create_multi
-    def create(self, vals_list):
-        """Override create to sync user stats after creation"""
-        hosts = super().create(vals_list)
-        hosts._sync_user_stats()
-        return hosts
-
-    def write(self, vals):
-        """Override write to sync user stats when user_ids changes"""
-        res = super().write(vals)
-        if 'user_ids' in vals:
-            self._sync_user_stats()
-        return res
-
-    def _sync_user_stats(self):
-        """Synchronize user statistics records with authorized users
-
-        Creates or updates records in protected_host_user_list_report table
-        to match the current list of authorized users.
-        """
-        ReportModel = self.env['sunray.protected_host_user_list_report']
-
-        for host_obj in self:
-            existing_stat_objs = ReportModel.search([('host_id', '=', host_obj.id)])
-            existing_user_ids = set(existing_stat_objs.mapped('user_id').ids)
-            current_user_ids = set(host_obj.user_ids.ids)
-
-            to_delete = existing_stat_objs.filtered(lambda s: s.user_id.id not in current_user_ids)
-            if to_delete:
-                to_delete.unlink()
-
-            new_user_ids = current_user_ids - existing_user_ids
-            for user_id in new_user_ids:
-                ReportModel.create({
-                    'host_id': host_obj.id,
-                    'user_id': user_id,
-                })
 
     @api.depends('migration_requested_at')
     def _compute_migration_pending_duration(self):
@@ -310,7 +273,10 @@ class SunrayHost(models.Model):
             record.worker_curl_helper = f'''curl -X GET "https://{record.domain}/sunray-wrkr/v1/health" \\
     -H "Authorization: Bearer {api_key}" \\
     -H "Content-Type: application/json"'''
-    
+
+    def btn_refresh(self):
+        pass
+
     def set_pending_worker(self, worker_name):
         """Set pending worker for migration
         
@@ -760,8 +726,6 @@ class SunrayHost(models.Model):
             
             raise UserError(f"Failed to clear worker cache: {str(e)}")
     
-    def btn_refresh(self):
-        self._sync_user_stats()
     
     def action_view_active_users(self):
         """Open list of active users authorized for this host"""

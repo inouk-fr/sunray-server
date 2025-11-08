@@ -1,149 +1,137 @@
 # -*- coding: utf-8 -*-
-from odoo import models, fields, api
+from odoo import models, fields, tools
 
 
 class SunrayProtectedHostUserListReport(models.Model):
-    """Report model for displaying user statistics per protected host
+    """SQL view-backed report model for displaying user statistics per protected host
 
-    This model provides a computed view of users with host-specific statistics.
-    Records are computed on-the-fly based on the host's authorized users.
+    This model is backed by a PostgreSQL view that computes real-time statistics
+    from the host-user relationship and related tables (passkeys, tokens, sessions).
 
-    Table name: protected_host_user_list_report
+    The view automatically calculates:
+    - User details (username, email, is_active)
+    - Passkey count per host
+    - Setup token count per host
+    - Active session count
+    - Last login timestamp
+
+    View name: protected_host_user_list_report
     """
     _name = 'sunray.protected_host_user_list_report'
     _description = 'Protected Host User List Report - Sunray'
     _rec_name = 'user_id'
     _order = 'username'
+    _auto = False  # Prevent Odoo from creating a table
 
-    # Relations
+    # Relations (computed from view)
     host_id = fields.Many2one(
         'sunray.host',
         string='Host',
-        required=True,
-        ondelete='cascade'
+        readonly=True
     )
     user_id = fields.Many2one(
         'sunray.user',
         string='User',
-        required=True,
-        ondelete='cascade'
+        readonly=True
     )
-
-    # Related fields from user for display
+    # User details (from sunray_user table)
     username = fields.Char(
-        related='user_id.username',
         string='Username',
-        readonly=True,
-        store=True
+        readonly=True
     )
     email = fields.Char(
-        related='user_id.email',
         string='Email',
-        readonly=True,
-        store=True
+        readonly=True
     )
     is_active = fields.Boolean(
-        related='user_id.is_active',
-        string='Active',
-        readonly=True,
-        store=True
+        string='Is active?',
+        readonly=True
     )
 
-    # Host-specific computed statistics
+    # Host-specific computed statistics (calculated by SQL view)
     passkey_count = fields.Integer(
-        compute='_compute_stats',
         string='Passkeys',
-        store=True,
+        readonly=True,
         help='Number of passkeys for this user on this specific host'
     )
     setup_token_count = fields.Integer(
-        compute='_compute_stats',
         string='Setup Tokens',
-        store=True,
+        readonly=True,
         help='Number of setup tokens for this user on this specific host'
     )
     active_session_count = fields.Integer(
-        related='user_id.active_session_count',
         string='Active Sessions',
-        readonly=True
+        readonly=True,
+        help='Number of active sessions for this user on this specific host'
     )
     last_login = fields.Datetime(
-        related='user_id.last_login',
         string='Last Login',
-        readonly=True
+        readonly=True,
+        help='Most recent login time for this user on this specific host'
     )
 
-    @api.depends('user_id.passkey_ids', 'user_id.setup_token_ids', 'host_id.domain')
-    def _compute_stats(self):
-        """Compute host-specific statistics for each user"""
-        for stat_obj in self:
-            if not stat_obj.user_id or not stat_obj.host_id:
-                stat_obj.passkey_count = 0
-                stat_obj.setup_token_count = 0
-                continue
+    def init(self):
+        """Create or replace the PostgreSQL view
 
-            # Count passkeys for this host
-            stat_obj.passkey_count = len(stat_obj.user_id.passkey_ids.filtered(
-                lambda p: p.host_domain == stat_obj.host_id.domain
-            ))
-
-            # Count setup tokens for this host
-            stat_obj.setup_token_count = len(stat_obj.user_id.setup_token_ids.filtered(
-                lambda t: t.host_id.id == stat_obj.host_id.id
-            ))
-
-    def btn_remove_user(self):
-        """Remove user from host and delete all host-specific credentials
-
-        This action will:
-        - Remove user from host's authorized users
-        - Delete all passkeys for this user on this host
-        - Delete all setup tokens for this user on this host
-        - Revoke all active sessions for this user on this host
+        Uses correlated subselects instead of LEFT JOINs for optimal performance.
+        Eliminates Cartesian product and leverages composite indexes on related tables.
         """
-        self.ensure_one()
+        tools.drop_view_if_exists(self.env.cr, self._table)
+        self.env.cr.execute("""
+            CREATE OR REPLACE VIEW sunray_protected_host_user_list_report AS (
+                SELECT
+                    -- Generate unique ID (required by Odoo)
+                    row_number() OVER (ORDER BY rel.host_id, rel.user_id) as id,
 
-        user = self.user_id
-        host = self.host_id
+                    -- Relations
+                    rel.host_id as host_id,
+                    rel.user_id as user_id,
 
-        # Delete passkeys for this host
-        passkeys_to_delete = user.passkey_ids.filtered(
-            lambda p: p.host_domain == host.domain
-        )
-        if passkeys_to_delete:
-            passkeys_to_delete.unlink()
+                    -- User details
+                    u.username,
+                    u.email,
+                    u.is_active,
 
-        # Delete setup tokens for this host
-        tokens_to_delete = user.setup_token_ids.filtered(
-            lambda t: t.host_id.id == host.id
-        )
-        if tokens_to_delete:
-            tokens_to_delete.unlink()
+                    -- Statistics: Passkey count for this host
+                    -- Uses index: idx_sunray_passkey_user_host_domain
+                    (SELECT COUNT(*)
+                     FROM sunray_passkey p
+                     WHERE p.user_id = rel.user_id
+                       AND p.host_domain = h.domain
+                    ) as passkey_count,
 
-        # Revoke active sessions for this user on this host
-        sessions_to_revoke = self.env['sunray.session'].search([
-            ('user_id', '=', user.id),
-            ('host_id', '=', host.id),
-            ('is_active', '=', True)
-        ])
-        if sessions_to_revoke:
-            for session in sessions_to_revoke:
-                session.revoke(f'User removed from host {host.domain}')
+                    -- Statistics: Setup token count for this host
+                    -- Uses index: idx_sunray_setup_token_user_host
+                    (SELECT COUNT(*)
+                     FROM sunray_setup_token st
+                     WHERE st.user_id = rel.user_id
+                       AND st.host_id = rel.host_id
+                    ) as setup_token_count,
 
-        # Remove user from host
-        host.write({
-            'user_ids': [(3, user.id)]  # Unlink user from host
-        })
+                    -- Statistics: Active session count for this host
+                    -- Uses index: idx_sunray_session_user_host_active
+                    (SELECT COUNT(*)
+                     FROM sunray_session s
+                     WHERE s.user_id = rel.user_id
+                       AND s.host_id = rel.host_id
+                       AND s.is_active = true
+                    ) as active_session_count,
 
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'title': 'User Removed',
-                'message': f'User {user.username} removed from {host.domain}. '
-                          f'Deleted {len(passkeys_to_delete)} passkey(s), '
-                          f'{len(tokens_to_delete)} setup token(s), '
-                          f'and revoked {len(sessions_to_revoke)} session(s).',
-                'type': 'success',
-            }
-        }
+                    -- Statistics: Last login time for this host
+                    -- Uses index: idx_sunray_session_user_host_created
+                    (SELECT MAX(s.created_at)
+                     FROM sunray_session s
+                     WHERE s.user_id = rel.user_id
+                       AND s.host_id = rel.host_id
+                    ) as last_login
+
+                FROM sunray_user_host_rel rel
+
+                -- Join host to get domain for passkey matching
+                JOIN sunray_host h ON h.id = rel.host_id
+
+                -- Join user details (INNER JOIN - user must exist)
+                JOIN sunray_user u ON u.id = rel.user_id
+            )
+        """)
+
