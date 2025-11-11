@@ -26,6 +26,10 @@ class SunrayAuditLog(models.Model):
         # Host Events
         ('host.activated', 'Host Activated'),
         ('host.deactivated', 'Host Deactivated'),
+        
+        ('host.lockdown.activated', 'Security lockdown enabled'),
+        ('host.lockdown.deactivated', 'Security lockdown disabled'),
+        
         # Token Management Events
         ('token.generated', 'Token Generated'),
         ('token.consumed', 'Token Consumed'),
@@ -55,6 +59,7 @@ class SunrayAuditLog(models.Model):
         ('config.host.protection_disabled', 'Host Protection Disabled'),
         ('config.host.registration_failed', 'Host Registration failed'),
         ('config.fetched_invalid', 'Config fetched is Invalid'),
+
         ('config.session_duration_changed', 'Session Duration Changed'),
         ('config.waf_revalidation_changed', 'WAF Revalidation Changed'),
         # Websocket Events

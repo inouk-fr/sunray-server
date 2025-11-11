@@ -161,7 +161,7 @@ The server logs these audit events for status changes:
 
 **Security Events**:
 - `host.lockdown.activated`: Security lockdown enabled (`block_traffic: False → True`)
-- `host.lockdown.cleared`: Security lockdown cleared (`block_traffic: True → False`)
+- `host.lockdown.deactivated`: Security lockdown disabled (`block_traffic: True → False`)
 
 ### Backward Compatibility
 

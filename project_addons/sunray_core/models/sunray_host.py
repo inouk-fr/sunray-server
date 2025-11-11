@@ -560,7 +560,7 @@ class SunrayHost(models.Model):
                     event_type = 'host.lockdown.activated'
                     severity = 'critical'
                 else:
-                    event_type = 'host.lockdown.cleared'
+                    event_type = 'host.lockdown.deactivated'
                     severity = 'warning'
                 self.env['sunray.audit.log'].create_admin_event(
                     event_type=event_type,
