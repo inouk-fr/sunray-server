@@ -226,8 +226,55 @@ cd inouk-sunray-worker-cloudflare/
 
 ### Environment Setup
 
+#### Modular Layer Scripts
+
+The project includes modular installation scripts in `.muppy/scripts/` for setting up development environments in both Docker and LXC/bare metal systems. These scripts follow the **Manganese Development Layer Architecture**.
+
+**Available Scripts:**
+- `mpy_install_100_sys_minimum.sh` - Layer 1: System utilities (curl, wget, vim, tmux, etc.)
+- `mpy_install_300_nodejs_dev.sh` - Layer 3: Node.js LTS 20.x from NodeSource
+- `mpy_install_400_pg_client.sh` - Layer 4: PostgreSQL client from official repository
+- `mpy_install_500_odoo18_deps.sh` - Layer 5: Odoo 18 dependencies (Python, wkhtmltopdf, ikb)
+
+**Numbering Scheme:**
+Scripts use numbered prefixes (000-599) to enforce installation order. See [.muppy/scripts/README.md](.muppy/scripts/README.md#numbering-scheme) for complete layer definitions.
+
+**Key Features:**
+- Idempotent (safe to re-run)
+- Context-aware (adapts to Docker vs LXC vs bare metal)
+- Environment variable configuration (e.g., `PG_VERSION=16`, `NODE_VERSION=20`, `IKB_PYTHON_VERSION=cpython@3.12.8`)
+- Numbered execution order (100 runs before 300)
+
+**Usage Examples:**
+```bash
+# System minimum (Layer 1)
+sudo ./.muppy/scripts/mpy_install_100_sys_minimum.sh
+
+# Node.js development (Layer 3)
+sudo ./.muppy/scripts/mpy_install_300_nodejs_dev.sh
+
+# PostgreSQL client (Layer 4)
+sudo ./.muppy/scripts/mpy_install_400_pg_client.sh
+sudo PG_VERSION=15 ./.muppy/scripts/mpy_install_400_pg_client.sh
+
+# Odoo 18 dependencies (Layer 5)
+sudo ./.muppy/scripts/mpy_install_500_odoo18_deps.sh
+sudo IKB_DEV_MODE=True ./.muppy/scripts/mpy_install_500_odoo18_deps.sh
+
+# Complete Odoo 18 development environment setup
+sudo ./.muppy/scripts/mpy_install_100_sys_minimum.sh
+sudo ./.muppy/scripts/mpy_install_400_pg_client.sh
+sudo ./.muppy/scripts/mpy_install_300_nodejs_dev.sh
+sudo ./.muppy/scripts/mpy_install_500_odoo18_deps.sh
+```
+
+**Documentation:** See [.muppy/scripts/README.md](.muppy/scripts/README.md) for complete details.
+
+#### Legacy Environment Setup
+
 ```bash
 # Node.js 20.19.4 and npm 10.8.2 are already installed
+# (or use modular script: sudo ./.muppy/scripts/mpy_install_300_nodejs_dev.sh)
 node --version  # v20.19.4
 npm --version   # 10.8.2
 
