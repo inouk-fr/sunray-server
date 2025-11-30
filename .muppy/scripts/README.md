@@ -31,7 +31,8 @@ Scripts use a numbered naming convention to enforce installation order and allow
 - `mpy_install_100_sys_minimum.sh` - Layer 1: System utilities
 - `mpy_install_300_nodejs_dev.sh` - Layer 3: Node.js development
 - `mpy_install_400_pg_client.sh` - Layer 4: PostgreSQL client
-- `mpy_install_500_odoo18_deps.sh` - Layer 5: Odoo 18 dependencies
+- `mpy_install_500_odoo18_deps.sh` - Layer 5: Odoo 18 system dependencies
+- `mpy_install_510_ikb.sh` - Layer 5: ikb (inouk buildit) installation
 
 ## Available Scripts
 
@@ -107,36 +108,78 @@ sudo NODE_VERSION=18 ./.muppy/scripts/mpy_install_300_nodejs_dev.sh
 
 ### mpy_install_500_odoo18_deps.sh
 
-**Layer 5 - Odoo 18 Dependencies**
+**Layer 5 - Odoo 18 System Dependencies**
 
-Installs all Odoo 18-specific development dependencies including Python libraries, wkhtmltopdf, uv, Python, and ikb (inouk buildit).
+Installs all Odoo 18-specific system dependencies including Python libraries, wkhtmltopdf, uv, and Python. This script requires sudo privileges and handles system-level installation.
 
 **Components installed:**
 - Python development libraries (Pillow, LDAP, compression)
 - Font packages (for PDF rendering)
 - wkhtmltopdf 0.12.6.1-3 (Odoo PDF tool)
-- uv (Python package installer)
+- uv (Python package installer) - installed in `/opt/muppy/tools` with symlink to `/usr/local/bin/uv`
 - Python 3.12.8 via uv
-- ikb (inouk buildit - Odoo build tool)
 - /opt/muppy directory structure
+
+**System-wide accessibility:**
+- uv is installed in `/opt/muppy/tools` and symlinked to `/usr/local/bin/uv` for system-wide access
+- All users can access `uv` without PATH modifications
 
 **Usage:**
 ```bash
-# Install with defaults
+# Install with defaults (requires sudo)
 sudo ./.muppy/scripts/mpy_install_500_odoo18_deps.sh
 
 # Install with custom Python version
 sudo IKB_PYTHON_VERSION=cpython@3.12.7 ./.muppy/scripts/mpy_install_500_odoo18_deps.sh
-
-# Install ikb in development mode
-sudo IKB_DEV_MODE=True ./.muppy/scripts/mpy_install_500_odoo18_deps.sh
 ```
+
+**Next step:**
+After running this script, install ikb using [mpy_install_510_ikb.sh](#mpy_install_510_ikbsh) (run WITHOUT sudo).
 
 **Environment variables:**
 - `MPY_USERNAME` - System username (default: $USER)
 - `MPY_APP_BASE_DIR` - Base directory (default: /opt/muppy)
 - `IKB_PYTHON_VERSION` - Python version (default: cpython@3.12.8)
 - `IKB_ODOO_VERSION` - Odoo major version (default: 18)
+
+### mpy_install_510_ikb.sh
+
+**Layer 5 - ikb (inouk buildit) Installation**
+
+Installs ikb (inouk buildit) as a regular user WITHOUT sudo privileges. This script must be run AFTER [mpy_install_500_odoo18_deps.sh](#mpy_install_500_odoo18_depssh) to ensure uv is available.
+
+**Important:** This script should NOT be run with sudo - it will exit with an error if run as root.
+
+**Components installed:**
+- ikb (inouk buildit - Odoo build tool) via `uv tool install`
+- Symlink in `/opt/muppy/tools/ikb`
+- System-wide symlink `/usr/local/bin/ikb` (uses sudo for this step only)
+
+**Installation location:**
+- ikb installs to user's `~/.local/share/uv/tools/inouk-buildit/`
+- Symlink created in `/opt/muppy/tools/ikb` → `~/.local/share/uv/tools/inouk-buildit/bin/ikb`
+- System-wide symlink `/usr/local/bin/ikb` → `/opt/muppy/tools/ikb`
+
+**Usage:**
+```bash
+# Install ikb (run WITHOUT sudo, as regular user)
+./.muppy/scripts/mpy_install_510_ikb.sh
+
+# Install ikb in development mode
+IKB_DEV_MODE=True ./.muppy/scripts/mpy_install_510_ikb.sh
+
+# Install with custom Python version
+IKB_PYTHON_VERSION=cpython@3.12.7 ./.muppy/scripts/mpy_install_510_ikb.sh
+```
+
+**Error handling:**
+- Script exits with error if run with sudo
+- Script exits with error if uv is not available
+- Script uninstalls previous ikb installation before fresh install
+
+**Environment variables:**
+- `MPY_APP_BASE_DIR` - Base directory (default: /opt/muppy)
+- `IKB_PYTHON_VERSION` - Python version (default: cpython@3.12.8)
 - `IKB_DEV_MODE` - Install ikb in dev mode (default: False)
 
 ## Script Features
@@ -203,16 +246,22 @@ RUN /tmp/mpy_install_300_nodejs_dev.sh && rm /tmp/mpy_install_300_nodejs_dev.sh
 # Navigate to project directory
 cd /opt/muppy/workspace-sunray/appserver-sunray18
 
-# Run scripts in order
+# Run scripts in order (with sudo)
 sudo ./.muppy/scripts/mpy_install_100_sys_minimum.sh
 sudo ./.muppy/scripts/mpy_install_400_pg_client.sh
 sudo ./.muppy/scripts/mpy_install_300_nodejs_dev.sh
+sudo ./.muppy/scripts/mpy_install_500_odoo18_deps.sh
+
+# Install ikb (WITHOUT sudo, as regular user)
+./.muppy/scripts/mpy_install_510_ikb.sh
 
 # Verify installations
 psql --version
 node --version
 npm --version
-which curl vim tmux
+uv --version
+ikb 2>&1 | head -3
+which curl vim tmux uv ikb
 locale
 ```
 
@@ -265,7 +314,9 @@ These scripts follow the **Manganese Development Layer Architecture**:
 - **Layer 2** (200-299): Development Minimum (future: build tools, Python, compilers)
 - **Layer 3** (300-399): Platform-Specific Dev Tools (this directory: [mpy_install_300_nodejs_dev.sh](mpy_install_300_nodejs_dev.sh))
 - **Layer 4** (400-499): Database Clients (this directory: [mpy_install_400_pg_client.sh](mpy_install_400_pg_client.sh))
-- **Layer 5** (500-599): Application-Specific (this directory: [mpy_install_500_odoo18_deps.sh](mpy_install_500_odoo18_deps.sh))
+- **Layer 5** (500-599): Application-Specific
+  - [mpy_install_500_odoo18_deps.sh](mpy_install_500_odoo18_deps.sh) - System dependencies (requires sudo)
+  - [mpy_install_510_ikb.sh](mpy_install_510_ikb.sh) - User tools (run WITHOUT sudo)
 
 ## Numbering Rationale
 
@@ -277,6 +328,13 @@ The numbering scheme follows the **Manganese Development Layer Architecture**:
 
 ## Version History
 
+- **v1.3** - Separated ikb installation (2025-11)
+  - Split ikb installation into separate script (mpy_install_510_ikb.sh)
+  - Two-script approach: system deps (sudo) vs user tools (no sudo)
+  - System-wide accessibility via symlinks to /usr/local/bin
+  - mpy_install_500_odoo18_deps.sh: installs uv, wkhtmltopdf, Python (requires sudo)
+  - mpy_install_510_ikb.sh: installs ikb (run WITHOUT sudo)
+  - Improved permissions handling and security separation
 - **v1.2** - Odoo 18 dependencies layer (2025-11)
   - Added mpy_install_500_odoo18_deps.sh (Layer 5)
   - Comprehensive Odoo 18 development environment setup

@@ -32,8 +32,7 @@ echo "[INFO] Running in ${CONTEXT} context..."
 echo "[INFO] Odoo 18 dependencies installation"
 
 # Configuration
-# Use SUDO_USER if available (when run with sudo), otherwise fall back to USER
-MPY_USERNAME="${MPY_USERNAME:-${SUDO_USER:-$USER}}"
+MPY_USERNAME="${MPY_USERNAME:-$USER}"
 MPY_APP_BASE_DIR="${MPY_APP_BASE_DIR:-/opt/muppy}"
 TOOLS_DIR="$MPY_APP_BASE_DIR/tools"
 SRC_DIR="$MPY_APP_BASE_DIR/src"
@@ -41,16 +40,15 @@ IKB_PYTHON_VERSION="${IKB_PYTHON_VERSION:-cpython@3.12.8}"
 IKB_ODOO_VERSION="${IKB_ODOO_VERSION:-18}"
 IKB_DEV_MODE="${IKB_DEV_MODE:-False}"
 
-# Check if core components already installed (idempotency)
-# Note: ikb is always reinstalled for clean idempotency
+# Check if dependencies already installed (idempotency)
 if command -v uv &> /dev/null && command -v wkhtmltopdf &> /dev/null; then
   UV_VERSION=$(uv --version 2>/dev/null || echo "unknown")
   WKHTMLTOPDF_VERSION=$(wkhtmltopdf --version 2>/dev/null | head -n1 || echo "unknown")
-  echo "[INFO] Core dependencies already installed (uv and wkhtmltopdf)"
+  echo "[INFO] Odoo 18 dependencies already installed:"
   echo "  - uv: ${UV_VERSION}"
   echo "  - wkhtmltopdf: ${WKHTMLTOPDF_VERSION}"
-  echo "[INFO] Skipping uv and wkhtmltopdf installation (ikb will be reinstalled)..."
-  # Don't exit - continue to reinstall ikb
+  echo "[INFO] Skipping installation..."
+  exit 0
 fi
 
 # Check root/sudo privileges
@@ -142,47 +140,6 @@ uv python install $IKB_PYTHON_VERSION || {
 }
 
 #
-# 7. Install ikb (inouk buildit) - Always reinstall for clean idempotency
-#
-echo "[INFO] Installing ikb (inouk buildit)..."
-
-# Clean up any previous installation
-echo "[INFO] Removing previous ikb installation if exists..."
-rm -f /usr/local/bin/ikb
-rm -f ${TOOLS_DIR}/ikb
-# Clean up uv tool installations for both root and user
-uv tool uninstall inouk-buildit 2>/dev/null || true
-if [[ "$MPY_USERNAME" != "root" ]] && id -u "$MPY_USERNAME" &>/dev/null; then
-  sudo -u $MPY_USERNAME uv tool uninstall inouk-buildit 2>/dev/null || true
-fi
-
-# Fresh installation (install as non-root user for proper permissions)
-if [ "$IKB_DEV_MODE" = "True" ]; then
-  echo "[INFO] Installing ikb in development mode..."
-  if [ ! -d "$SRC_DIR/buildit" ]; then
-    git clone https://gitlab.com/inouk/buildit.git "$SRC_DIR/buildit"
-  fi
-  if [[ "$MPY_USERNAME" != "root" ]] && id -u "$MPY_USERNAME" &>/dev/null; then
-    sudo -u $MPY_USERNAME UV_TOOL_BIN_DIR=$TOOLS_DIR uv tool install --editable "$SRC_DIR/buildit"
-  else
-    UV_TOOL_BIN_DIR=$TOOLS_DIR uv tool install --editable "$SRC_DIR/buildit"
-  fi
-else
-  echo "[INFO] Installing ikb from git..."
-  if [[ "$MPY_USERNAME" != "root" ]] && id -u "$MPY_USERNAME" &>/dev/null; then
-    sudo -u $MPY_USERNAME UV_TOOL_BIN_DIR=$TOOLS_DIR uv tool install \
-      --python=${IKB_PYTHON_VERSION} git+https://gitlab.com/inouk/buildit.git
-  else
-    UV_TOOL_BIN_DIR=$TOOLS_DIR uv tool install \
-      --python=${IKB_PYTHON_VERSION} git+https://gitlab.com/inouk/buildit.git
-  fi
-fi
-
-# Create symlink for system-wide access
-echo "[INFO] Creating system-wide symlink for ikb..."
-ln -sf ${TOOLS_DIR}/ikb /usr/local/bin/ikb
-
-#
 # 8. Verification
 #
 echo "[INFO] Verifying installations..."
@@ -203,15 +160,6 @@ if command -v uv &> /dev/null; then
   echo "[SUCCESS] uv: ${UV_VER}"
 else
   echo "[ERROR] uv installation failed"
-  VERIFICATION_FAILED=true
-fi
-
-# Check ikb
-if command -v ikb &> /dev/null; then
-  IKB_VER=$(ikb --version 2>/dev/null | head -n1 || echo "installed")
-  echo "[SUCCESS] ikb: ${IKB_VER}"
-else
-  echo "[ERROR] ikb installation failed"
   VERIFICATION_FAILED=true
 fi
 
@@ -242,6 +190,8 @@ echo "[INFO] Directory structure:"
 echo "  - Base: ${MPY_APP_BASE_DIR}"
 echo "  - Tools: ${TOOLS_DIR}"
 echo "  - Source: ${SRC_DIR}"
-echo "[INFO] Tools installed in ${TOOLS_DIR} and symlinked to /usr/local/bin"
-echo "[INFO] uv and ikb are now available system-wide"
+echo "[INFO] uv installed in ${TOOLS_DIR} and symlinked to /usr/local/bin/uv"
+echo ""
+echo "[NEXT STEP] To install ikb, run WITHOUT sudo:"
+echo "  .muppy/scripts/mpy_install_510_ikb.sh"
 exit 0

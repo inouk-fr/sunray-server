@@ -122,27 +122,38 @@ inouk-sunray-server/
    cd inouk-sunray-server
    ```
 
-2. **Install dependencies**
+2. **Install system dependencies**
+   ```bash
+   # Install Odoo 18 system dependencies (requires sudo)
+   sudo ./.muppy/scripts/mpy_install_500_odoo18_deps.sh
+
+   # Install ikb (inouk buildit) - run WITHOUT sudo
+   ./.muppy/scripts/mpy_install_510_ikb.sh
+   ```
+
+   See [.muppy/scripts/README.md](.muppy/scripts/README.md) for detailed installation documentation.
+
+3. **Install Python dependencies**
    ```bash
    # Python dependencies for Sunray Server
    ikb install  # Processes buildit.json and requirements.txt
    ```
 
-3. **Start Sunray Server**
+4. **Start Sunray Server**
    ```bash
    # Install sunray_core addon
    bin/sunray-srvr -i sunray_core
-   
+
    # Start server
    bin/sunray-srvr
    ```
 
-4. **Generate API key for workers**
+5. **Generate API key for workers**
    ```bash
    bin/sunray-srvr srctl apikey create Worker_API_Key --sr-worker
    ```
 
-5. **Deploy a worker**
+6. **Deploy a worker**
    Choose and deploy a worker implementation:
    - [Cloudflare Workers Setup](https://gitlab.com/cmorisse/inouk-sunray-worker-cloudflare)
    - Kubernetes ForwardAuth (coming soon)
