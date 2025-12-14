@@ -737,9 +737,15 @@ The `/config/register` endpoint handles all migration logic:
 **Response** (Valid Token - 200 OK):
 ```json
 {
-  "valid": true
+  "valid": true,
+  "user_id": 42
 }
 ```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `valid` | boolean | Whether the token is valid |
+| `user_id` | integer | User ID for WebAuthn user handle (only present when valid=true) |
 
 **Response** (Invalid Token - 200 OK):
 ```json

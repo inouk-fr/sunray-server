@@ -280,10 +280,15 @@ class SunrayRESTController(http.Controller):
                 worker_id=worker_id
             )
             
-            # Return simple validation result
-            return self._json_response({
+            # Return validation result with user_id for WebAuthn registration
+            response_data = {
                 'valid': validation_result['valid']
-            })
+            }
+            # Include user_id if validation succeeded (needed for WebAuthn user handle)
+            if validation_result['valid'] and validation_result.get('user_obj'):
+                response_data['user_id'] = validation_result['user_obj'].id
+
+            return self._json_response(response_data)
             
         except Exception as e:
             # Log unexpected errors
