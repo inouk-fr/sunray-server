@@ -66,6 +66,8 @@ class SunrayApiKey(models.Model):
     show_full_key = fields.Boolean(
         string='Show Full Key',
         default=False,
+        store=False,
+        inverse=lambda obj: obj,
         help='Toggle to show full API key'
     )
     
